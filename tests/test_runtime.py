@@ -26,7 +26,9 @@ class ScriptedLLM:
 
 
 def engine(*answers, tools=None, **options):
-    tools = tools or load_tools(TOOLS)
+    loaded = tools or load_tools(TOOLS)
+    tools = {key: value for key, value in loaded.items()
+             if key in {"math.add", "system.time", "system.uptime", "math.combo"}}
     llm = ScriptedLLM(*answers)
     router = SemanticRouter(tools, ToyEmbedder(), min_score=0.7)
     return WorkflowEngine(tools, router, llm, **options), llm

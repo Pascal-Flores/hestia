@@ -23,7 +23,11 @@ class ToyEmbedder:
 
 
 def sample_tools():
-    return load_tools(Path(__file__).resolve().parents[1] / "tools")
+    # Legacy unit tests isolate three original plugins. The new catalog has
+    # overlapping semantic examples and would intentionally be ambiguous.
+    loaded = load_tools(Path(__file__).resolve().parents[1] / "tools")
+    return {key: value for key, value in loaded.items()
+            if key in {"math.add", "system.time", "system.uptime"}}
 
 
 def test_retrieval_by_examples():
