@@ -27,15 +27,26 @@ class WakeDetector:
         self.threshold = threshold
         self.consecutive = consecutive
         self.positive = 0
+        self.last_score = 0.0
+        self.last_label = None
 
     def predict(self, pcm16: np.ndarray) -> bool:
         if pcm16.dtype != np.int16 or len(pcm16) != WAKE_SAMPLES:
             raise ValueError("Wake word expects 80 ms of 16 kHz mono int16")
         scores = self.model.predict(pcm16)
-        detected = bool(scores) and max(float(p) for p in scores.values()) >= self.threshold
+        if scores:
+            self.last_label, self.last_score = max(
+                ((str(name), float(score)) for name, score in scores.items()),
+                key=lambda entry: entry[1],
+            )
+        else:
+            self.last_label, self.last_score = None, 0.0
+        detected = self.last_score >= self.threshold
         self.positive = self.positive + 1 if detected else 0
         return self.positive >= self.consecutive
 
     def reset(self) -> None:
         self.model.reset()
         self.positive = 0
+        self.last_score = 0.0
+        self.last_label = None

@@ -158,7 +158,10 @@ def test_wake_detector_works_with_builtin_or_custom(monkeypatch, tmp_path):
     assert not detector.predict(pcm)
     assert detector.predict(pcm)
     assert downloaded
+    assert detector.last_score == 0.8
+    assert detector.last_label == "name_from_model"
     detector.reset()
+    assert detector.last_score == 0.0
     assert detector.positive == 0 and detector.model.reset_called
     with pytest.raises(FileNotFoundError):
         WakeDetector(str(tmp_path / "missing.onnx"))
@@ -173,3 +176,36 @@ def test_compose_listener_opt_in():
     assert listener["environment"]["LISTENER_FILTER"]
     assert "/dev/snd:/dev/snd" in listener["devices"]
     assert "llm" in config["services"] and "stt" in config["services"]
+
+
+import logging
+
+from services.listener.diagnostics import WakeDiagnostics, block_rms_dbfs
+
+
+def test_wake_diagnostics_reports_audio_levels_and_peak_score(caplog, monkeypatch):
+    import services.listener.diagnostics as diag
+    now = [0.0]
+    monkeypatch.setattr(diag.time, "monotonic", lambda: now[0])
+    stats = WakeDiagnostics(threshold=0.55, report_seconds=1.0)
+    stats.observe(
+        raw=np.full(3840, 10000, np.int16),
+        clean=np.full(1280, 7000, np.int16),
+        wake_score=0.43,
+    )
+    now[0] = 1.1
+    with caplog.at_level(logging.INFO, logger="hestia.listener"):
+        stats.report_if_due()
+    assert "Wake diagnostics" in caplog.text
+    assert "max wake score=0.430" in caplog.text
+    assert "threshold=0.550" in caplog.text
+    assert stats.frames == 0
+    assert block_rms_dbfs(np.zeros(1280, np.int16)) == -120.0
+
+
+def test_test_once_excludes_wake_word(monkeypatch):
+    from services.listener import app
+    received = []
+    monkeypatch.setattr(app, "run", lambda **options: received.append(options))
+    app.main(["--test-once", "6"])
+    assert received == [{"record_sample": 0.0, "test_once": 6.0}]

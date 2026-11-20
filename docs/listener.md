@@ -98,6 +98,44 @@ notamment `LLM_THREADS` et `STT_CPU_THREADS`, ou augmenter
 d'une latence de capture supplémentaire. L'absence d'overrun ne prouve pas la
 qualité de la détection ; tester wake word et STT après chaque réglage.
 
+### Aucun déclenchement malgré des statistiques micro correctes
+
+Les statistiques PortAudio mesurent le fonctionnement de la capture, **pas**
+l'intelligibilité de la voix. Par défaut, le modèle reconnaît « Hey Jarvis »
+(et non « Hestia »). Pour isoler le problème, activer temporairement :
+
+```dotenv
+LISTENER_DEBUG_WAKE=1
+LISTENER_DIAGNOSTICS_INTERVAL=5
+```
+
+Recréer le service `listener` et prononcer plusieurs fois « Hey Jarvis ».
+Une ligne `Wake diagnostics` indique le maximum RMS brut et nettoyé (dBFS)
+et le meilleur score de détection sur la période. Si le signal brut reste
+proche du silence alors que tu parles, vérifier `LISTENER_INPUT_DEVICE`.
+Si le brut est audible, mais le nettoyé silencieux, essayer
+`LISTENER_FILTER=none`. Si les deux sont audibles mais que le score du
+wake word reste très faible, vérifier le modèle et la prononciation.
+Ne pas abaisser fortement le seuil sans vérifier les faux positifs.
+
+Pour tester **sans wake word** l'intégralité du parcours STT → outil →
+LLM → TTS → haut-parleur :
+
+```sh
+docker compose stop listener
+docker compose --profile listener run --rm --no-deps listener \\
+  python -m listener.app --test-once 6
+aplay recordings/enhanced.wav
+aplay recordings/once-response.wav
+docker compose --profile listener up -d listener
+```
+
+Parler pendant ces six secondes. Les fichiers `raw.wav`, `enhanced.wav`
+et `once-response.wav` sont sauvés volontairement dans `recordings/`
+à des fins de diagnostic. La commande affiche également la transcription
+et la réponse. Si le test reçoit une erreur STT/LLM/TTS, elle est affichée
+dans la console sans être masquée par le wake word.
+
 ### Wake word de test, puis « Hestia »
 
 **Par défaut le déclencheur est « Hey Jarvis »**, car openWakeWord ne fournit pas de modèle
@@ -145,6 +183,8 @@ wake word et au STT. Les WAV sont enregistrés seulement lors de ce test explici
 | `LISTENER_INPUT_LATENCY` | vide | Latence PortAudio `low` ou `high` |
 | `LISTENER_PORTAUDIO_BLOCKSIZE` | `0` | Taille des callbacks choisie par le pilote ; `3840` force les anciens blocs de 80 ms |
 | `LISTENER_METRICS_INTERVAL` | `30` | Intervalle du journal de performance, en secondes |
+| `LISTENER_DEBUG_WAKE` | `0` | Journal diagnostic des niveaux micro et scores wake word (1 pour activer) |
+| `LISTENER_DIAGNOSTICS_INTERVAL` | `5` | Intervalle de diagnostic, en secondes |
 | `LISTENER_WAKE_MODEL` | `hey jarvis` | Modèle intégré ou chemin ONNX |
 | `LISTENER_WAKE_THRESHOLD` | `0.55` | Score d'activation openWakeWord |
 | `LISTENER_WAKE_CONSECUTIVE` | `1` | Nombre de trames positives de suite |

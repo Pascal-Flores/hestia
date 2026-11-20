@@ -17,6 +17,7 @@ import numpy as np
 
 from .capture import BufferedMicrophone
 from .client import HestiaClient, decode_wav
+from .diagnostics import WakeDiagnostics
 from .dsp import AudioPreprocessor, BLOCK_SAMPLES, INPUT_RATE
 from .session import CaptureSettings, UtteranceCapture, wav_bytes
 from .wake import WakeDetector
@@ -88,7 +89,7 @@ class ProcessingMetrics:
         self.reset()
 
 
-def run(record_sample: float = 0):
+def run(record_sample: float = 0, test_once: float = 0):
     import sounddevice as sd
 
     input_device = _device(os.getenv("LISTENER_INPUT_DEVICE", ""))
@@ -98,6 +99,9 @@ def run(record_sample: float = 0):
     input_latency = os.getenv("LISTENER_INPUT_LATENCY", "").strip() or None
     pa_blocksize = int(os.getenv("LISTENER_PORTAUDIO_BLOCKSIZE", "0"))
     metrics = ProcessingMetrics(float(os.getenv("LISTENER_METRICS_INTERVAL", "30")))
+    debug_wake = os.getenv("LISTENER_DEBUG_WAKE", "").strip().lower() in ("1", "true", "yes", "on")
+    debug_interval = float(os.getenv("LISTENER_DIAGNOSTICS_INTERVAL", "5"))
+    diagnostics = None
     capture = CaptureSettings(
         min_voice_seconds=float(os.getenv("LISTENER_MIN_VOICE", "0.20")),
         silence_seconds=float(os.getenv("LISTENER_SILENCE", "0.85")),
@@ -112,25 +116,34 @@ def run(record_sample: float = 0):
              mode, INPUT_RATE, queue_blocks, BLOCK_SECONDS * queue_blocks,
              pa_blocksize, input_latency or "default")
     if not record_sample:
+        client = HestiaClient(os.getenv("HESTIA_LISTENER_URL", "http://hestia:8765/v1/audio/ask"),
+                              api_key=os.getenv("HESTIA_API_KEY", ""))
+    else:
+        client = None
+    if not record_sample and not test_once:
         wake_model = os.getenv("LISTENER_WAKE_MODEL", "hey jarvis")
         wake = WakeDetector(wake_model,
                             threshold=float(os.getenv("LISTENER_WAKE_THRESHOLD", "0.55")),
                             consecutive=int(os.getenv("LISTENER_WAKE_CONSECUTIVE", "1")))
-        client = HestiaClient(os.getenv("HESTIA_LISTENER_URL", "http://hestia:8765/v1/audio/ask"),
-                              api_key=os.getenv("HESTIA_API_KEY", ""))
         LOG.info("Wake model: %s (example default is NOT 'Hestia')", wake_model)
+        if debug_wake:
+            diagnostics = WakeDiagnostics(
+                threshold=wake.threshold, report_seconds=debug_interval, logger=LOG
+            )
+            LOG.info("Wake diagnostics enabled; report interval=%.1f seconds", debug_interval)
     else:
         wake = None
-        client = None
 
     pre_roll = deque(maxlen=2)  # 160 ms at 16 kHz
     recorder = None
     with BufferedMicrophone(device=input_device, max_blocks=queue_blocks,
                             latency=input_latency,
                             portaudio_blocksize=pa_blocksize) as microphone:
-        if record_sample:
+        if record_sample or test_once:
             raw_frames, clean_frames = [], []
-            frames_to_capture = max(1, round(record_sample / BLOCK_SECONDS))
+            seconds = record_sample or test_once
+            frames_to_capture = max(1, round(seconds / BLOCK_SECONDS))
+            LOG.info("Recording %.1fs of microphone audio without wake word", seconds)
             for _ in range(frames_to_capture):
                 block = microphone.read()
                 if block.missed_blocks or block.input_overflow:
@@ -145,6 +158,21 @@ def run(record_sample: float = 0):
             (output_dir / "enhanced.wav").write_bytes(wav_bytes(np.concatenate(clean_frames)))
             LOG.info("Wrote raw.wav and enhanced.wav to %s", output_dir)
             preprocessor.close()
+            if test_once:
+                # A single recorded request bypasses wake word and VAD to test
+                # microphone -> STT -> route/LLM -> Pocket TTS -> speaker.
+                microphone.stop()
+                LOG.info("Sending enhanced recording to Hestia (wake word bypassed)")
+                result = client.ask(wav_bytes(np.concatenate(clean_frames)))
+                LOG.info("STT transcript: %s", result.transcript)
+                LOG.info("Hestia [%s]: %s", result.status, result.text)
+                (output_dir / "once-response.wav").write_bytes(result.wav)
+                LOG.info("Saved response to %s", output_dir / "once-response.wav")
+                samples, rate = decode_wav(result.wav)
+                try:
+                    sd.play(samples, samplerate=rate, device=output_device, blocking=True)
+                finally:
+                    sd.stop()
             return
 
         LOG.info("Listening for wake word. Stop with Ctrl+C.")
@@ -184,6 +212,13 @@ def run(record_sample: float = 0):
                         wake.reset()
                         pre_roll.clear()
 
+                if diagnostics is not None:
+                    diagnostics.observe(
+                        raw=block.pcm, clean=pcm16,
+                        wake_score=wake.last_score if wake_invoked else None,
+                    )
+                    diagnostics.report_if_due()
+
                 metrics.observe(
                     processing_ms=(time.perf_counter() - started) * 1000,
                     queued_blocks=block.queued_blocks,
@@ -196,7 +231,8 @@ def run(record_sample: float = 0):
                 metrics.report_if_due()
 
                 if state == "activated":
-                    LOG.info("Wake word detected; listening for command")
+                    LOG.info("Wake word detected (score=%.3f); listening for command",
+                             wake.last_score)
                 elif state == "timeout":
                     LOG.info("No intelligible command; returning to wake word")
                 elif state == "complete":
@@ -228,13 +264,19 @@ def main(argv=None):
     parser.add_argument("--list-devices", action="store_true", help="List PortAudio devices without loading models")
     parser.add_argument("--record-sample", type=float, default=0.0,
                         help="Save raw and enhanced WAV for N seconds, without wake word")
+    parser.add_argument("--test-once", type=float, default=0.0, metavar="SECONDS",
+                        help="Record N seconds, call Hestia and play/save the audio reply (no wake word)")
     args = parser.parse_args(argv)
+    if args.record_sample and args.test_once:
+        parser.error("--record-sample and --test-once cannot be combined")
+    if args.record_sample < 0 or args.test_once < 0:
+        parser.error("Audio recording duration must be positive")
     logging.basicConfig(level=os.getenv("LISTENER_LOG_LEVEL", "INFO"),
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     if args.list_devices:
         list_devices()
     else:
-        run(record_sample=args.record_sample)
+        run(record_sample=args.record_sample, test_once=args.test_once)
 
 
 if __name__ == "__main__":
