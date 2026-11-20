@@ -74,3 +74,40 @@ class SemanticRouter:
         if len(ranked) > 1 and top_score - ranked[1][1] < self.min_margin:
             return Route("ambiguous", None, tuple(ranked[:3]))
         return Route("matched", top_id, tuple(ranked[:3]))
+
+
+class FastEmbedder:
+    """ONNX-backed multilingual embeddings without a PyTorch runtime.
+
+    FastEmbed's model list varies by version. Register the known E5 model from
+    its upstream ONNX files when the installed version does not list it yet.
+    """
+
+    def __init__(self, model_name: str = "intfloat/multilingual-e5-small", *,
+                 cache_dir: str | None = None):
+        try:
+            from fastembed import TextEmbedding
+        except ImportError as exc:
+            raise RuntimeError("Install ONNX embeddings: pip install '.[embeddings-onnx]'") from exc
+        supported = {entry["model"] for entry in TextEmbedding.list_supported_models()}
+        if model_name not in supported and model_name == "intfloat/multilingual-e5-small":
+            from fastembed.common.model_description import ModelSource, PoolingType
+            TextEmbedding.add_custom_model(
+                model=model_name,
+                pooling=PoolingType.MEAN,
+                normalization=True,
+                sources=ModelSource(hf=model_name),
+                dim=384,
+                model_file="onnx/model.onnx",
+            )
+        kwargs = {"model_name": model_name}
+        if cache_dir:
+            kwargs["cache_dir"] = cache_dir
+        self.model = TextEmbedding(**kwargs)
+        self.e5 = "e5" in model_name.lower()
+
+    def encode(self, texts: Sequence[str], *, kind: str) -> list[list[float]]:
+        if not texts:
+            return []
+        prefix = ("query: " if kind == "query" else "passage: ") if self.e5 else ""
+        return [vector.tolist() for vector in self.model.embed([prefix + text for text in texts])]

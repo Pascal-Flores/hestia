@@ -14,6 +14,41 @@ Prototype d'assistant vocal **local-first** et extensible. Un outil est un dossi
 
 Le moteur est text-first : il sait déjà transcrire un fichier audio via faster-whisper et produire un WAV avec Pocket TTS, mais la boucle micro/wake-word, le streaming et les automatismes Home Assistant ne sont **pas** encore intégrés.
 
+## Déploiement Docker Compose (LLM + API + STT + TTS)
+
+La stack CPU pré-configurée utilise **llama.cpp** (Qwen3-0.6B GGUF), **FastEmbed/ONNX**
+(E5 multilingue), **faster-whisper** (`tiny` français) et **Pocket TTS** (`french`, voix `estelle`).
+Elle est conçue pour Linux x86_64 et ARM64 ; le Raspberry Pi 5 8 Go est une cible de test,
+**pas** une garantie de performances temps réel. L'UNO Q 4 Go est trop contraint pour
+recommander cette stack complète. La première initialisation télécharge plusieurs modèles.
+
+```bash
+cp .env.example .env
+docker compose up -d --build
+docker compose ps
+curl -s http://127.0.0.1:8765/health/ready
+```
+
+Seul le port de l'API Hestia (`127.0.0.1:8765`) est publié par défaut.
+Le téléchargement des modèles peut prendre plusieurs minutes ; pendant le chargement
+`/health/ready` renvoie **503** avec l'état de chaque service. Les modèles sont mis en
+cache dans quatre volumes Docker persistants.
+
+Test texte (la sélection d'outil reste sémantique et indépendante du LLM) :
+
+```bash
+curl -s http://127.0.0.1:8765/v1/route \
+  -H 'Content-Type: application/json' \
+  -d '{"text":"Quelle heure est-il ?"}'
+curl -s http://127.0.0.1:8765/v1/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"text":"Combien font 12 plus 30 ?"}'
+```
+
+Pour le STT/TTS et le tour complet audio, voir **[docs/docker.md](docs/docker.md)**.
+Les outils sont montés depuis `./tools` en lecture seule. Après ajout d'un manifeste,
+`POST /v1/tools/reload` reconstruit l'index sans reconstruire les images.
+
 ## Installation
 
 Python 3.10+ :

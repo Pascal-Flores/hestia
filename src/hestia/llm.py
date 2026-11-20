@@ -25,6 +25,7 @@ class OpenAICompatibleLLM:
             url=os.getenv(f"{prefix}_URL", "http://127.0.0.1:8080/v1/chat/completions"),
             model=os.getenv(f"{prefix}_MODEL", "local"),
             api_key=os.getenv(f"{prefix}_API_KEY"),
+            timeout=int(os.getenv(f"{prefix}_TIMEOUT", "90")),
         )
 
     def complete(self, *, system: str, user: str, json_mode: bool = False) -> str:
