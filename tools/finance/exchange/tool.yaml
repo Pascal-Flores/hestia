@@ -1,0 +1,35 @@
+id: finance.exchange
+name: Taux de change
+description: Convertit un montant entre deux devises avec les taux publiés par Frankfurter.
+routing:
+  examples:
+    - Combien font 100 dollars en euros ?
+    - Convertis 50 euros en livres sterling
+    - Quel est le taux de change EUR USD ?
+    - Combien valent 200 francs suisses en euros ?
+inputs:
+  type: object
+  additionalProperties: false
+  properties:
+    amount: {type: number, description: Montant à convertir, 1 pour un simple taux}
+    from: {type: string, description: Code devise ISO de départ, ex EUR}
+    to: {type: string, description: Code devise cible, ex USD}
+  required: [amount, from, to]
+schedule_allowed: true
+steps:
+  - id: extract
+    uses: ai.extract
+    with:
+      prompt: Extrais montant et codes devises ISO 4217 (EUR, USD, GBP, CHF...). Utilise 1 pour demander un taux.
+  - id: exchange
+    uses: exec.call
+    with:
+      command: python3
+      argv: [main.py]
+      arguments: ${{ steps.extract.output }}
+      timeout: 20
+  - id: respond
+    uses: ai.respond
+    with:
+      data: ${{ steps.exchange.output }}
+      prompt: Annonce le montant converti et la date du taux. Ne présente pas le taux comme une cotation de marché instantanée.

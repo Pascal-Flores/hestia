@@ -1,0 +1,33 @@
+id: music.radio
+name: Rechercher une radio
+description: Recherche des stations de radio et leurs flux audio, sans lancer de lecture.
+routing:
+  examples:
+    - Quelles stations de radio jazz peux-tu trouver ?
+    - Cherche une radio rock
+    - Trouve la radio FIP
+    - Quelles radios françaises diffusent de la musique classique ?
+inputs:
+  type: object
+  additionalProperties: false
+  properties:
+    query: {type: string, description: Nom ou genre de radio recherché}
+  required: [query]
+schedule_allowed: true
+steps:
+  - id: extract
+    uses: ai.extract
+    with:
+      prompt: Extrais le nom de la station ou le genre radio recherché.
+  - id: search
+    uses: exec.call
+    with:
+      command: python3
+      argv: [main.py]
+      arguments: ${{ steps.extract.output }}
+      timeout: 20
+  - id: respond
+    uses: ai.respond
+    with:
+      data: ${{ steps.search.output }}
+      prompt: Donne les noms des radios trouvées, sans prétendre les avoir lancées.

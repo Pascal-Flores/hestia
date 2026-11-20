@@ -1,0 +1,37 @@
+id: web.search
+name: Recherche Web
+description: Recherche des pages web récentes avec Brave Search et retourne titres, extraits et liens.
+routing:
+  examples:
+    - Cherche sur internet les dernières nouvelles sur Arduino
+    - Recherche sur le web une recette de pâte à crêpes
+    - Trouve des informations actuelles sur les prix des panneaux solaires
+    - Quelles sont les nouveautés de Raspberry Pi ?
+    - Fais une recherche internet sur les moteurs à explosion
+inputs:
+  type: object
+  additionalProperties: false
+  properties:
+    query: {type: string, description: Termes de recherche concis}
+  required: [query]
+schedule_allowed: true
+config:
+  BRAVE_API_KEY: {label: Clé API Brave Search, secret: true, required: true, description: Clé du portail Brave Search API}
+  SEARCH_LANGUAGE: {label: Langue de recherche, default: fr}
+steps:
+  - id: extract
+    uses: ai.extract
+    with:
+      prompt: Extrais uniquement la requête de recherche, sans inventer une réponse.
+  - id: fetch
+    uses: exec.call
+    with:
+      command: python3
+      argv: [main.py]
+      arguments: ${{ steps.extract.output }}
+      timeout: 20
+  - id: respond
+    uses: ai.respond
+    with:
+      data: ${{ steps.fetch.output }}
+      prompt: Résume les résultats, indique les titres ou liens sources et n'invente aucun fait.

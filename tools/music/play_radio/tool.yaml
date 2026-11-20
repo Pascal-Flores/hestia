@@ -1,0 +1,38 @@
+id: music.play_radio
+name: Écouter une radio (MPD)
+description: Démarre une station de radio sur un lecteur MPD configuré sur le réseau local.
+routing:
+  examples:
+    - Lance la radio FIP
+    - Joue la radio France Inter
+    - Mets Radio Nova sur les enceintes
+    - Fais jouer une radio jazz
+    - Je veux écouter une station de radio
+inputs:
+  type: object
+  additionalProperties: false
+  properties:
+    station: {type: string, description: Nom de la radio à diffuser}
+  required: [station]
+schedule_allowed: false
+config:
+  MPD_HOST: {label: Adresse du serveur MPD, required: true, description: IP ou nom DNS du lecteur MPD}
+  MPD_PORT: {label: Port MPD, default: "6600"}
+  MPD_PASSWORD: {label: Mot de passe MPD, secret: true}
+steps:
+  - id: extract
+    uses: ai.extract
+    with:
+      prompt: Extrais le nom de la station de radio à démarrer.
+  - id: play
+    uses: exec.call
+    with:
+      command: python3
+      argv: [main.py]
+      arguments: ${{ steps.extract.output }}
+      timeout: 25
+  - id: respond
+    uses: ai.respond
+    with:
+      data: ${{ steps.play.output }}
+      prompt: Confirme la lecture seulement si success vaut true, sinon explique l'erreur.

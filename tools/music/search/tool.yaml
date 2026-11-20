@@ -1,0 +1,34 @@
+id: music.search
+name: Rechercher de la musique
+description: Recherche des artistes, albums et chansons avec l'API publique iTunes.
+routing:
+  examples:
+    - Trouve-moi des chansons de Daft Punk
+    - Recherche le dernier album de Stromae
+    - Qui chante cette chanson ?
+    - Cherche la musique Imagine de John Lennon
+    - Donne-moi des morceaux de jazz de Miles Davis
+inputs:
+  type: object
+  additionalProperties: false
+  properties:
+    query: {type: string, description: Artiste, morceau ou album recherché}
+  required: [query]
+schedule_allowed: true
+steps:
+  - id: extract
+    uses: ai.extract
+    with:
+      prompt: Extrais le nom de l'artiste ou le titre recherché.
+  - id: fetch
+    uses: exec.call
+    with:
+      command: python3
+      argv: [main.py]
+      arguments: ${{ steps.extract.output }}
+      timeout: 20
+  - id: respond
+    uses: ai.respond
+    with:
+      data: ${{ steps.fetch.output }}
+      prompt: Présente les morceaux trouvés. Ne dis pas que la lecture a démarré.

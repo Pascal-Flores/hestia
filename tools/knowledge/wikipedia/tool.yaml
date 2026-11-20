@@ -1,0 +1,33 @@
+id: knowledge.wikipedia
+name: Recherche Wikipédia
+description: Trouve des articles Wikipédia en français sur une personne, un lieu ou un sujet.
+routing:
+  examples:
+    - Qui était Ada Lovelace ?
+    - Cherche un article Wikipédia sur la photosynthèse
+    - Peux-tu me résumer l'histoire de la Tour Eiffel ?
+    - Qu'est-ce que le pendule de Foucault ?
+inputs:
+  type: object
+  additionalProperties: false
+  properties:
+    query: {type: string, description: Sujet ou nom recherché}
+  required: [query]
+schedule_allowed: true
+steps:
+  - id: extract
+    uses: ai.extract
+    with:
+      prompt: Extrais uniquement le sujet à chercher sur Wikipédia.
+  - id: fetch
+    uses: exec.call
+    with:
+      command: python3
+      argv: [main.py]
+      arguments: ${{ steps.extract.output }}
+      timeout: 18
+  - id: respond
+    uses: ai.respond
+    with:
+      data: ${{ steps.fetch.output }}
+      prompt: Résume uniquement les résultats fournis, cite le titre de l'article.

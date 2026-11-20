@@ -1,0 +1,36 @@
+id: weather.current
+name: Météo actuelle
+description: Récupère la météo en temps réel d'une ville avec Open-Meteo.
+routing:
+  examples:
+    - Quelle météo fait-il à Paris ?
+    - Quel temps fait-il à Lyon ?
+    - Donne-moi la température extérieure
+    - Est-ce qu'il pleut aujourd'hui ?
+    - Quel temps fait-il actuellement ?
+inputs:
+  type: object
+  additionalProperties: false
+  properties:
+    city: {type: string, description: Ville demandée ou vide si la ville par défaut est configurée}
+  required: [city]
+schedule_allowed: true
+config:
+  DEFAULT_CITY: {label: Ville par défaut, description: Utilisée quand l'utilisateur ne précise aucune ville, default: Paris}
+steps:
+  - id: extract
+    uses: ai.extract
+    with:
+      prompt: Extrais uniquement la ville mentionnée. Si aucune n'est donnée, renvoie city comme chaîne vide.
+  - id: fetch
+    uses: exec.call
+    with:
+      command: python3
+      argv: [main.py]
+      arguments: ${{ steps.extract.output }}
+      timeout: 20
+  - id: respond
+    uses: ai.respond
+    with:
+      data: ${{ steps.fetch.output }}
+      prompt: Annonce la température, le vent et les précipitations à partir du résultat météo réel. Reste bref.
