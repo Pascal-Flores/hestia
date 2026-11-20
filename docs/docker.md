@@ -76,6 +76,28 @@ curl -s http://127.0.0.1:8765/v1/audio/speak \
 Le profil vocal `mii` est activable avec `HESTIA_VOICE_PROFILE=mii` dans `.env`
 (SoX traite la sortie du TTS). Il ne reproduit pas le moteur propriétaire de Nintendo.
 
+### Prononciation des nombres dans Pocket TTS
+
+Par défaut, la passerelle Hestia normalise les nombres **avant** d'appeler Pocket TTS :
+`42` devient `quarante-deux`, `14:30` devient `quatorze heures trente`,
+`20°C` devient `vingt degrés Celsius` et `3,5` devient
+`trois virgule cinq`. La normalisation couvre aussi les dates usuelles,
+les ordinaux, les pourcentages et les montants en euros. Seule la
+prononciation est modifiée : les valeurs numériques originales restent
+intactes dans les réponses HTTP et les paramètres d'outils.
+
+Le traitement est déterministe et ne nécessite aucun appel LLM. Il est
+activé par défaut dans `hestia`, aussi bien pour `/v1/audio/speak` que
+`/v1/audio/ask`. Pour le désactiver :
+
+```dotenv
+HESTIA_TTS_NORMALIZE_NUMBERS=0
+```
+
+Puis `docker compose up -d --force-recreate hestia`.
+Les URL et adresses e-mail, qui sont des identifiants, ne sont pas
+converties en nombres.
+
 ### Tour vocal complet
 
 ```sh

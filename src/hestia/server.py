@@ -24,9 +24,11 @@ from .llm import OpenAICompatibleLLM
 from .manifest import load_tools
 from .routing import FastEmbedder, SemanticRouter, SentenceTransformerEmbedder
 from .runtime import WorkflowEngine
+from .speech import normalize_for_speech
 
 MAX_AUDIO_BYTES = 10 * 1024 * 1024
 MAX_TTS_CHARS = 2000
+MAX_NORMALIZED_TTS_CHARS = 12000
 
 
 class TextRequest(BaseModel):
@@ -43,7 +45,7 @@ class AudioBridge:
     """Calls the two persistent internal audio services over HTTP."""
 
     def __init__(self, stt_url: str, tts_url: str, *, profile: str = "natural",
-                 stt_backend: str = "faster_whisper"):
+                 stt_backend: str = "faster_whisper", normalize_numbers: bool = True):
         self.stt_url = stt_url
         self.tts_url = tts_url
         if stt_backend not in {"faster_whisper", "whisper_cpp"}:
@@ -52,6 +54,7 @@ class AudioBridge:
         if profile not in {"natural", "mii"}:
             raise ValueError("Unknown voice profile")
         self.profile = profile
+        self.normalize_numbers = normalize_numbers
 
     def transcribe(self, audio: bytes, filename: str = "speech.wav") -> str:
         try:
@@ -91,8 +94,11 @@ class AudioBridge:
     def synthesize(self, text: str) -> bytes:
         if not text.strip() or len(text) > MAX_TTS_CHARS:
             raise ValueError("Text for speech must contain 1-2000 characters")
+        spoken_text = normalize_for_speech(text) if self.normalize_numbers else text
+        if len(spoken_text) > MAX_NORMALIZED_TTS_CHARS:
+            raise ValueError("Normalized speech exceeds 12000 characters")
         try:
-            response = httpx.post(self.tts_url, data={"text": text}, timeout=240)
+            response = httpx.post(self.tts_url, data={"text": spoken_text}, timeout=240)
             response.raise_for_status()
             audio = response.content
             if not audio.startswith(b"RIFF"):
@@ -158,6 +164,8 @@ def create_app(*, engine: WorkflowEngine | None = None,
             os.getenv("HESTIA_TTS_URL", "http://tts:8000/tts"),
             profile=os.getenv("HESTIA_VOICE_PROFILE", "natural"),
             stt_backend=os.getenv("HESTIA_STT_BACKEND", "faster_whisper"),
+            normalize_numbers=os.getenv("HESTIA_TTS_NORMALIZE_NUMBERS", "1")
+                .strip().lower() not in ("0", "false", "no", "off"),
         )
         yield
 

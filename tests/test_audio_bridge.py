@@ -57,3 +57,18 @@ def test_whisper_cpp_backend_converts_to_16khz_wav(monkeypatch):
 def test_unknown_audio_backend_is_rejected():
     with pytest.raises(ValueError, match="STT backend"):
         AudioBridge("http://stt", "http://tts", stt_backend="unknown")
+
+
+def test_audio_bridge_normalizes_only_the_tts_payload(monkeypatch):
+    requests = []
+    def fake_post(url, **kwargs):
+        requests.append(kwargs["data"]["text"])
+        return httpx.Response(200, content=b"RIFFtestWAVE", request=httpx.Request("POST", url))
+    monkeypatch.setattr("hestia.server.httpx.post", fake_post)
+    bridge = AudioBridge("http://stt", "http://tts/tts")
+    assert bridge.synthesize("Il est 14h30 et il fait 20°C.") == b"RIFFtestWAVE"
+    assert requests == ["Il est quatorze heures trente et il fait vingt degrés Celsius."]
+
+    plain = AudioBridge("http://stt", "http://tts/tts", normalize_numbers=False)
+    plain.synthesize("42")
+    assert requests[-1] == "42"

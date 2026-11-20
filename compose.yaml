@@ -24,6 +24,7 @@ services:
       HESTIA_STT_URL: http://stt:8001/v1/transcribe
       HESTIA_TTS_URL: http://tts:8000/tts
       HESTIA_VOICE_PROFILE: ${HESTIA_VOICE_PROFILE:-natural}
+      HESTIA_TTS_NORMALIZE_NUMBERS: ${HESTIA_TTS_NORMALIZE_NUMBERS:-1}
       OMP_NUM_THREADS: '2'
     volumes:
       - ./tools:/app/tools:ro

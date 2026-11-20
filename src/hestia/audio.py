@@ -6,6 +6,8 @@ from pathlib import Path
 import subprocess
 import tempfile
 
+from .speech import normalize_for_speech
+
 
 def transcribe(wav_file: str | Path, *, model_name: str = "tiny", language: str = "fr") -> str:
     """Transcribe a recorded file locally with faster-whisper (optional dependency)."""
@@ -25,8 +27,9 @@ def synthesize(text: str, output: str | Path, *, language: str = "french",
     destination.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as temporary:
         raw = Path(temporary) / "raw.wav"
+        spoken = normalize_for_speech(text) if language.lower() in ("fr", "fr_fr", "french") else text
         command = ["pocket-tts", "generate", "--language", language,
-                   "--text", text, "--output-path", str(raw)]
+                   "--text", spoken, "--output-path", str(raw)]
         if voice:
             command.extend(["--voice", voice])
         subprocess.run(command, check=True, timeout=180)
