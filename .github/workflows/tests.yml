@@ -35,3 +35,10 @@ jobs:
       - run: ./scripts/native/run.sh --dry-run
       - run: HESTIA_MEMORY_PROFILE=2g ./scripts/native/run.sh --dry-run
       - run: HESTIA_MEMORY_PROFILE=8g ./scripts/native/run.sh --dry-run
+
+  listener-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build --file docker/Dockerfile.listener --tag hestia-listener:ci .
