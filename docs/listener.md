@@ -136,6 +136,42 @@ et `once-response.wav` sont sauvés volontairement dans `recordings/`
 et la réponse. Si le test reçoit une erreur STT/LLM/TTS, elle est affichée
 dans la console sans être masquée par le wake word.
 
+### Si le wake word fonctionne mais pas le haut-parleur
+
+Si le journal indique `PaErrorCode -9997` / `Invalid sample rate`,
+la sortie ALSA n'accepte pas la fréquence d'origine du WAV de Pocket TTS.
+Le listener choisit désormais une fréquence prise en charge par
+`sounddevice.check_output_settings` : la fréquence du WAV si compatible,
+sinon la fréquence par défaut du périphérique, puis 48/44,1/32/16 kHz.
+Il rééchantillonne avec SoXR avant la lecture, sans changer le pitch.
+Un journal `Resampling Pocket TTS output: ...` indique la conversion.
+
+Pour une sortie analogique récalcitrante :
+```dotenv
+LISTENER_OUTPUT_DEVICE=1
+LISTENER_OUTPUT_RATE=48000
+```
+L'appareil choisi doit prendre en charge ce taux et les canaux du WAV.
+Ne pas forcer 48 kHz si le périphérique ne l'accepte pas.
+
+### Si Whisper invente une transcription
+
+Si Hestia répond `ambiguous` après une transcription incorrecte,
+le semantic router est seulement en train de traiter un mauvais texte.
+Pour enregistrer **exactement le WAV transmis au STT** après le wake word :
+
+```dotenv
+LISTENER_DEBUG_AUDIO=1
+```
+
+Recréer le conteneur `listener`, prononcer le mot d'activation et une
+commande. Écouter `recordings/last-command.wav` et
+`recordings/last-response.wav` sur le PC hôte. Ces deux fichiers sont
+réécrits au prochain échange, et rien n'est conservé par défaut.
+Si la commande est claire mais la transcription reste mauvaise, comparer
+`LISTENER_FILTER=none`, puis essayer `STT_MODEL=base` (nécessite
+un redémarrage du service `stt`, et davantage de RAM).
+
 ### Wake word de test, puis « Hestia »
 
 **Par défaut le déclencheur est « Hey Jarvis »**, car openWakeWord ne fournit pas de modèle
@@ -195,6 +231,8 @@ wake word et au STT. Les WAV sont enregistrés seulement lors de ce test explici
 | `LISTENER_MAX_UTTERANCE` | `12.0` | Limite de durée de commande |
 | `LISTENER_INPUT_DEVICE` | auto | Périphérique d'entrée PortAudio |
 | `LISTENER_OUTPUT_DEVICE` | auto | Périphérique de sortie PortAudio |
+| `LISTENER_OUTPUT_RATE` | `0` | Auto : essaie taux WAV/défaut/48 kHz ; forcé : Hz explicites |
+| `LISTENER_DEBUG_AUDIO` | `0` | Sauvegarde `last-command.wav`/`last-response.wav` pour diagnostic |
 
 Les scores RNNoise et openWakeWord ne sont pas des probabilités de bon routage.
 Calibrer avec des essais en condition réelle, avec musique/TV, à diverses distances.

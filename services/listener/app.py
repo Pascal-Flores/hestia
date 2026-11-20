@@ -16,7 +16,8 @@ import time
 import numpy as np
 
 from .capture import BufferedMicrophone
-from .client import HestiaClient, decode_wav
+from .client import HestiaClient
+from .playback import play_wav
 from .diagnostics import WakeDiagnostics
 from .dsp import AudioPreprocessor, BLOCK_SAMPLES, INPUT_RATE
 from .session import CaptureSettings, UtteranceCapture, wav_bytes
@@ -94,6 +95,8 @@ def run(record_sample: float = 0, test_once: float = 0):
 
     input_device = _device(os.getenv("LISTENER_INPUT_DEVICE", ""))
     output_device = _device(os.getenv("LISTENER_OUTPUT_DEVICE", ""))
+    output_rate = int(os.getenv("LISTENER_OUTPUT_RATE", "0")) or None
+    debug_audio = os.getenv("LISTENER_DEBUG_AUDIO", "0").strip().lower() in ("1", "true", "yes", "on")
     mode = os.getenv("LISTENER_FILTER", "rnnoise")
     queue_blocks = int(os.getenv("LISTENER_QUEUE_BLOCKS", "16"))
     input_latency = os.getenv("LISTENER_INPUT_LATENCY", "").strip() or None
@@ -168,9 +171,9 @@ def run(record_sample: float = 0, test_once: float = 0):
                 LOG.info("Hestia [%s]: %s", result.status, result.text)
                 (output_dir / "once-response.wav").write_bytes(result.wav)
                 LOG.info("Saved response to %s", output_dir / "once-response.wav")
-                samples, rate = decode_wav(result.wav)
                 try:
-                    sd.play(samples, samplerate=rate, device=output_device, blocking=True)
+                    play_wav(result.wav, device=output_device, requested_rate=output_rate,
+                             sd=sd, logger=LOG)
                 finally:
                     sd.stop()
             return
@@ -239,11 +242,21 @@ def run(record_sample: float = 0, test_once: float = 0):
                     # Pause capture while speaking: otherwise our TTS triggers the mic.
                     microphone.stop()
                     try:
+                        if debug_audio:
+                            from pathlib import Path
+                            output_dir = Path(os.getenv("LISTENER_RECORD_DIR", "/recordings"))
+                            output_dir.mkdir(parents=True, exist_ok=True)
+                            (output_dir / "last-command.wav").write_bytes(audio)
+                            LOG.info("Saved actual STT input to %s",
+                                     output_dir / "last-command.wav")
                         result = client.ask(audio)
                         LOG.info("Transcription: %s", result.transcript)
                         LOG.info("Hestia [%s]: %s", result.status, result.text)
-                        samples, rate = decode_wav(result.wav)
-                        sd.play(samples, samplerate=rate, device=output_device, blocking=True)
+                        if debug_audio:
+                            (output_dir / "last-response.wav").write_bytes(result.wav)
+                            LOG.info("Saved TTS WAV to %s", output_dir / "last-response.wav")
+                        play_wav(result.wav, device=output_device, requested_rate=output_rate,
+                                 sd=sd, logger=LOG)
                     except Exception:
                         LOG.exception("Audio round trip failed")
                     finally:
