@@ -85,8 +85,10 @@ def test_validation_and_bad_pcm_size():
         BufferedMicrophone(latency="instant")
     mic = BufferedMicrophone()
     mic._callback(b"123", BLOCK_SAMPLES, None, FakeStatus())
-    with pytest.raises(RuntimeError, match="PCM size"):
-        mic.read(timeout=0.01)
+    push(mic, 99)
+    assert mic.read(timeout=0.01).input_overflow is True
+    with pytest.raises(ValueError, match="PORTAUDIO_BLOCKSIZE"):
+        BufferedMicrophone(portaudio_blocksize=-1)
 
 
 def test_metrics_reports_performance_budget_and_drops(monkeypatch, caplog):
@@ -101,3 +103,64 @@ def test_metrics_reports_performance_budget_and_drops(monkeypatch, caplog):
     assert "dropped=2 blocks" in caplog.text
     assert "PortAudio overflows=1" in caplog.text
     assert metrics.blocks == 0
+
+
+
+def test_auto_blocksize_reassembles_variable_portaudio_frames():
+    mic = BufferedMicrophone(max_blocks=4)
+    assert mic.portaudio_blocksize == 0
+    first = np.full(960, 10, np.int16).tobytes()
+    second = np.full(1920, 20, np.int16).tobytes()
+    third = np.full(960, 30, np.int16).tobytes()
+    mic._callback(first, 960, None, FakeStatus())
+    mic._callback(second, 1920, None, FakeStatus())
+    assert mic._queue.empty()
+    mic._callback(third, 960, None, FakeStatus())
+    block = mic.read(timeout=0.01)
+    np.testing.assert_array_equal(
+        block.pcm, np.concatenate([
+            np.full(960, 10, np.int16),
+            np.full(1920, 20, np.int16),
+            np.full(960, 30, np.int16),
+        ])
+    )
+    assert block.input_overflow is False
+    assert block.missed_blocks == 0
+
+
+def test_variable_callbacks_can_produce_multiple_application_frames():
+    mic = BufferedMicrophone(max_blocks=4)
+    pcm = np.arange(BLOCK_SAMPLES * 2 + 480, dtype=np.int16)
+    mic._callback(pcm.tobytes(), len(pcm), None, FakeStatus())
+    np.testing.assert_array_equal(mic.read(timeout=0.01).pcm, pcm[:BLOCK_SAMPLES])
+    np.testing.assert_array_equal(mic.read(timeout=0.01).pcm, pcm[BLOCK_SAMPLES:BLOCK_SAMPLES * 2])
+    assert mic._queue.empty()
+    mic._callback(np.zeros(BLOCK_SAMPLES - 480, np.int16).tobytes(),
+                  BLOCK_SAMPLES - 480, None, FakeStatus())
+    assert mic.read(timeout=0.01).pcm.size == BLOCK_SAMPLES
+
+
+def test_input_overflow_does_not_join_audio_across_gap():
+    mic = BufferedMicrophone(max_blocks=4)
+    before_gap = np.full(1920, 1, np.int16)
+    after_gap = np.full(1920, 2, np.int16)
+    remainder = np.full(1920, 3, np.int16)
+    mic._callback(before_gap.tobytes(), 1920, None, FakeStatus())
+    mic._callback(after_gap.tobytes(), 1920, None, FakeStatus(True))
+    mic._callback(remainder.tobytes(), 1920, None, FakeStatus())
+    block = mic.read(timeout=0.01)
+    assert block.input_overflow
+    np.testing.assert_array_equal(
+        block.pcm, np.concatenate([after_gap, remainder])
+    )
+
+
+def test_pa_fixed_size_can_be_restored_and_pending_audio_is_cleared():
+    mic = BufferedMicrophone(max_blocks=3, portaudio_blocksize=BLOCK_SAMPLES)
+    half = np.full(1920, 3, np.int16).tobytes()
+    mic._callback(half, 1920, None, FakeStatus())
+    mic._discard_queued()
+    mic._callback(half, 1920, None, FakeStatus())
+    assert mic._queue.empty()
+    mic._callback(half, 1920, None, FakeStatus())
+    assert mic.read(timeout=0.01).pcm.size == BLOCK_SAMPLES

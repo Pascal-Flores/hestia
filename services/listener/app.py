@@ -96,6 +96,7 @@ def run(record_sample: float = 0):
     mode = os.getenv("LISTENER_FILTER", "rnnoise")
     queue_blocks = int(os.getenv("LISTENER_QUEUE_BLOCKS", "16"))
     input_latency = os.getenv("LISTENER_INPUT_LATENCY", "").strip() or None
+    pa_blocksize = int(os.getenv("LISTENER_PORTAUDIO_BLOCKSIZE", "0"))
     metrics = ProcessingMetrics(float(os.getenv("LISTENER_METRICS_INTERVAL", "30")))
     capture = CaptureSettings(
         min_voice_seconds=float(os.getenv("LISTENER_MIN_VOICE", "0.20")),
@@ -106,8 +107,10 @@ def run(record_sample: float = 0):
         rnnoise_speech_threshold=float(os.getenv("LISTENER_SPEECH_THRESHOLD", "0.30")),
     )
     preprocessor = AudioPreprocessor(mode)
-    LOG.info("Audio processing: %s at %s Hz; input queue=%d blocks (%.2f sec)",
-             mode, INPUT_RATE, queue_blocks, BLOCK_SECONDS * queue_blocks)
+    LOG.info("Audio processing: %s at %s Hz; input queue=%d blocks (%.2f sec); "
+             "PortAudio blocksize=%d (0=driver-chosen), latency=%s",
+             mode, INPUT_RATE, queue_blocks, BLOCK_SECONDS * queue_blocks,
+             pa_blocksize, input_latency or "default")
     if not record_sample:
         wake_model = os.getenv("LISTENER_WAKE_MODEL", "hey jarvis")
         wake = WakeDetector(wake_model,
@@ -123,7 +126,8 @@ def run(record_sample: float = 0):
     pre_roll = deque(maxlen=2)  # 160 ms at 16 kHz
     recorder = None
     with BufferedMicrophone(device=input_device, max_blocks=queue_blocks,
-                            latency=input_latency) as microphone:
+                            latency=input_latency,
+                            portaudio_blocksize=pa_blocksize) as microphone:
         if record_sample:
             raw_frames, clean_frames = [], []
             frames_to_capture = max(1, round(record_sample / BLOCK_SECONDS))

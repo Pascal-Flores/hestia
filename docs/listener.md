@@ -69,7 +69,11 @@ La première version exécutait RNNoise et openWakeWord sur le même thread que
 `RawInputStream.read()`. Le traitement pouvait dépasser le budget de **80 ms**
 et PortAudio perdait des échantillons. Le service utilise désormais un callback
 PortAudio qui **copie seulement l'audio** dans une file bornée ; le filtrage et
-l'inférence sont exécutés indépendamment. Les blocs les plus anciens sont
+l'inférence sont exécutés indépendamment. Par défaut, PortAudio choisit lui-même
+la taille des callbacks (`LISTENER_PORTAUDIO_BLOCKSIZE=0`) ; le listener
+recompose ensuite des blocs fixes de 80 ms pour RNNoise et openWakeWord.
+Un bloc fixe de 3840 échantillons peut provoquer un tampon supplémentaire
+sur certaines API audio ; il reste disponible en configuration pour comparer. Les blocs les plus anciens sont
 abandonnés lorsque la file sature, plutôt que d'accumuler du retard.
 
 Le service enregistre toutes les 30 secondes les informations suivantes :
@@ -139,6 +143,7 @@ wake word et au STT. Les WAV sont enregistrés seulement lors de ce test explici
 | `LISTENER_FILTER` | `rnnoise` | `rnnoise` ou `none` (comparaison) |
 | `LISTENER_QUEUE_BLOCKS` | `16` | File audio bornée (80 ms/bloc) ; absorbe les pics CPU |
 | `LISTENER_INPUT_LATENCY` | vide | Latence PortAudio `low` ou `high` |
+| `LISTENER_PORTAUDIO_BLOCKSIZE` | `0` | Taille des callbacks choisie par le pilote ; `3840` force les anciens blocs de 80 ms |
 | `LISTENER_METRICS_INTERVAL` | `30` | Intervalle du journal de performance, en secondes |
 | `LISTENER_WAKE_MODEL` | `hey jarvis` | Modèle intégré ou chemin ONNX |
 | `LISTENER_WAKE_THRESHOLD` | `0.55` | Score d'activation openWakeWord |
