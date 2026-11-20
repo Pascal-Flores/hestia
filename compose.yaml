@@ -153,9 +153,12 @@ services:
       LISTENER_SPEECH_THRESHOLD: ${LISTENER_SPEECH_THRESHOLD:-0.30}
       LISTENER_RECORD_DIR: /recordings
       LISTENER_LOG_LEVEL: ${LISTENER_LOG_LEVEL:-INFO}
+      HOME: /tmp
+      XDG_CACHE_HOME: /tmp/.cache
       OMP_NUM_THREADS: '1'
     devices:
       - /dev/snd:/dev/snd
+    user: "${LISTENER_UID:-1000}:${LISTENER_GID:-1000}"
     group_add:
       - "${LISTENER_AUDIO_GID:-29}"
     volumes:

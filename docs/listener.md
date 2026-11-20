@@ -56,7 +56,9 @@ docker compose --profile listener run --rm --no-deps listener \
 Renseigner `LISTENER_INPUT_DEVICE` et `LISTENER_OUTPUT_DEVICE` (indice ou sous-chaîne du nom
 PortAudio), puis `docker compose --profile listener up -d`. Si `/dev/snd` appartient
 au groupe `audio`, vérifier son GID via `stat -c %g /dev/snd/controlC0` et régler
-`LISTENER_AUDIO_GID` en conséquence (défaut 29 sur Ubuntu).
+`LISTENER_AUDIO_GID` en conséquence (défaut 29 sur Ubuntu). Pour les WAV de
+diagnostic dans `./recordings`, régler `LISTENER_UID` et `LISTENER_GID` si votre compte
+Linux n'utilise pas UID/GID 1000 (`id -u`, `id -g`).
 Sur certaines machines, l'accès ALSA direct n'utilise pas les périphériques audio de la
 session utilisateur ; dans ce cas utiliser une carte son USB directement accessible,
 ou une configuration ALSA/Pulse/PipeWire spécifique à la machine.
