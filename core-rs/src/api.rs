@@ -224,8 +224,23 @@ async fn synthesize_audio(state:&AppState,text:&str)->Result<Bytes,String>{
  let response=state.http.post(&settings.tts_url)
   .form(&[("text",spoken)]).send().await.map_err(|e|e.to_string())?
   .error_for_status().map_err(|e|e.to_string())?;
- let wav=response.bytes().await.map_err(|e|e.to_string())?;
+ let mut wav=response.bytes().await.map_err(|e|e.to_string())?;
  if !wav.starts_with(b"RIFF"){return Err("TTS returned non-WAV data".into());}
+ if settings.voice_profile=="mii" {
+   use tokio::{io::AsyncWriteExt,process::Command};
+   use std::process::Stdio;
+   let mut process=Command::new("sox").args(["-t","wav","-","-t","wav","-",
+     "pitch","250","highpass","180","lowpass","5000"])
+     .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn()
+     .map_err(|e|e.to_string())?;
+   if let Some(mut input)=process.stdin.take(){
+     input.write_all(&wav).await.map_err(|e|e.to_string())?;
+   }
+   let output=tokio::time::timeout(std::time::Duration::from_secs(45),process.wait_with_output())
+     .await.map_err(|_|"SoX timeout".to_string())?.map_err(|e|e.to_string())?;
+   if !output.status.success(){return Err("SoX voice filter failed".into());}
+   wav=Bytes::from(output.stdout);
+ }
  Ok(wav)
 }
 async fn speak(State(state):State<Arc<AppState>>,headers:HeaderMap,

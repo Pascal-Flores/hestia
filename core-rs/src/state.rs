@@ -20,7 +20,15 @@ impl AppState {
   let path=dir.join("hestia-settings.json");
   let data=if path.exists(){
    serde_json::from_slice(&std::fs::read(&path)?).context("Invalid settings JSON")?
-  }else{SavedData::default()};
+  }else{
+   let mut defaults=SavedData::default();
+   // The scientific calculator replaces the old two-number demo route.
+   // Keep legacy math.add on disk, but disable it on first Rust bootstrap.
+   defaults.plugins.insert("math.add".into(),PluginSettings{
+       enabled:false,values:Default::default()
+   });
+   defaults
+  };
   Ok(Self {core,http:Client::builder().timeout(std::time::Duration::from_secs(180)).build()?,
    data:RwLock::new(data),path,persistence:Mutex::new(())})
  }

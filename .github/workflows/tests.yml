@@ -17,6 +17,7 @@ jobs:
       - run: python -m pip install -e '.[dev,api]' 'numpy>=1.26,<3'
       - run: pytest -q
       - run: hestia tools
+      - run: python -m compileall -q tools
 
   compose:
     runs-on: ubuntu-latest
@@ -58,3 +59,13 @@ jobs:
           workspaces: core-rs
       - name: Rust tests and compilation
         run: cargo test --manifest-path core-rs/Cargo.toml
+
+  rust-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Rust core Docker image
+        run: docker build -f docker/Dockerfile.core-rust -t hestia-rust:ci .
+      - name: Test Rust binary starts in runtime image
+        run: docker run --rm hestia-rust:ci --version

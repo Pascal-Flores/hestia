@@ -18,6 +18,10 @@ async fn main() -> Result<()> {
         .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
         .init();
 
+    if std::env::args().any(|arg| arg=="--version") {
+        println!("hestia-core {}", env!("CARGO_PKG_VERSION"));
+        return Ok(());
+    }
     let tools = PathBuf::from(std::env::var("HESTIA_TOOLS_DIR").unwrap_or_else(|_| "/app/tools".into()));
     let data = PathBuf::from(std::env::var("HESTIA_DATA_DIR").unwrap_or_else(|_| "/data".into()));
     std::fs::create_dir_all(&data)?;
