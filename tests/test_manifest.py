@@ -10,7 +10,7 @@ TOOLS = Path(__file__).resolve().parents[1] / "tools"
 
 def test_discovers_example_tools():
     tools = load_tools(TOOLS)
-    assert set(tools) == {"math.add", "system.time"}
+    assert set(tools) == {"math.add", "system.time", "system.uptime"}
     assert len(tools["math.add"].examples) >= 3
     assert tools["math.add"].steps[0]["uses"] == "ai.extract"
 
