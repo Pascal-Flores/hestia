@@ -57,7 +57,7 @@ pub struct Manifest {
 }
 fn empty_object_schema() -> Value {serde_json::json!({"type":"object","properties":{}})}
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginSettings {
     #[serde(default="enabled")]
     pub enabled: bool,
@@ -65,6 +65,9 @@ pub struct PluginSettings {
     pub values: BTreeMap<String,String>,
 }
 fn enabled() -> bool {true}
+impl Default for PluginSettings {
+    fn default() -> Self { Self { enabled: true, values: BTreeMap::new() } }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {

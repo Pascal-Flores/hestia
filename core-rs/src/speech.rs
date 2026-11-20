@@ -2,7 +2,7 @@ use num2words::{Lang,Num2Words};
 use regex::Regex;
 
 fn integer(text:&str)->String{
- let sanitized=text.replace([' ','\u{a0}','\u{202f}'],"");
+ let sanitized=text.replace(' ', "").replace('\u{a0}', "").replace('\u{202f}', "");
  if sanitized.len()>16 || (sanitized.len()>1 && sanitized.starts_with('0')){
   const WORDS:[&str;10]=["zéro","un","deux","trois","quatre","cinq","six","sept","huit","neuf"];
   return sanitized.chars().filter_map(|c|c.to_digit(10))

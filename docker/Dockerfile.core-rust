@@ -1,0 +1,19 @@
+# Rust Hestia gateway, keeping the existing audio/LLM services.
+FROM rust:1-bookworm AS build
+WORKDIR /build
+RUN apt-get update && apt-get install -y --no-install-recommends pkg-config cmake clang libclang-dev libssl-dev && rm -rf /var/lib/apt/lists/*
+COPY core-rs /build/core-rs
+RUN cargo build --release --manifest-path core-rs/Cargo.toml
+RUN mkdir -p /ortlibs && find /build/core-rs/target -name 'libonnxruntime.so*' -exec cp -L {} /ortlibs/ \; || true
+
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl python3-minimal libstdc++6 libgomp1 && rm -rf /var/lib/apt/lists/*
+COPY --from=build /build/core-rs/target/release/hestia-core /usr/local/bin/hestia-core
+COPY --from=build /ortlibs/ /usr/local/lib/
+RUN ldconfig && useradd --uid 10001 --create-home hestia && mkdir -p /app/tools /data && chown -R hestia:hestia /data
+COPY tools /app/tools
+ENV HESTIA_TOOLS_DIR=/app/tools HESTIA_DATA_DIR=/data RUST_LOG=info
+WORKDIR /app
+USER hestia
+EXPOSE 8765
+ENTRYPOINT ["hestia-core"]

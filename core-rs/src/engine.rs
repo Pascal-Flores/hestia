@@ -63,6 +63,15 @@ impl Engine {
   }
   let count=next.len();*self.index.write().await=next;Ok(count)
  }
+ pub fn available_manifests(&self)->Result<Vec<Manifest>>{
+  let mut paths=vec![];discover(&self.root,&mut paths)?;paths.sort();
+  let mut tools=Vec::new();
+  for p in paths{
+   let mut t:Manifest=serde_yaml::from_str(&std::fs::read_to_string(&p)?)?;
+   t.directory=p.parent().unwrap().to_path_buf();tools.push(t);
+  }
+  Ok(tools)
+ }
  pub async fn list(&self)->Vec<Manifest>{
   let mut list:Vec<_>=self.index.read().await.values().map(|x|x.tool.clone()).collect();
   list.sort_by(|a,b|a.id.cmp(&b.id));list
@@ -287,7 +296,8 @@ async fn process(tool:&Manifest,exec:&str,argv:&[String],args:Value,ctx:&Value,
 }
 async fn run_exec(tool:&Manifest,opts:&Value,args:Value,ctx:&Value,conf:&HashMap<String,String>)->Result<Value>{
  let cmd=opts["command"].as_str().ok_or_else(||anyhow!("Missing command"))?;
- let argv=opts["argv"].as_array().ok_or_else(||anyhow!("Missing argv"))?
+ let argv=opts.get("argv").or_else(||opts.get("args"))
+   .and_then(Value::as_array).ok_or_else(||anyhow!("Missing argv/args"))?
    .iter().map(|x|x.as_str().map(str::to_owned).ok_or_else(||anyhow!("Non-string argv")))
    .collect::<Result<Vec<_>>>()?;
  if ["python3","bash","sh"].contains(&cmd){

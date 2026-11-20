@@ -1,0 +1,17 @@
+# Optional Rust core overlay: preserves listener, STT, LLM, and Pocket TTS.
+# docker compose -f compose.yaml -f compose.rust.yaml --profile listener up -d --build
+services:
+  hestia:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.core-rust
+    environment:
+      HESTIA_DATA_DIR: /data
+      HESTIA_TOOLS_DIR: /app/tools
+      RUST_LOG: info
+    volumes:
+      - ./tools:/app/tools:ro
+      - hestia_data:/data
+
+volumes:
+  hestia_data:

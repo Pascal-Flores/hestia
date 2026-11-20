@@ -46,3 +46,15 @@ jobs:
         run: docker run --rm hestia-listener:ci python -c "from listener.dsp import RNNoise; d = RNNoise(); d.close()"
       - name: Smoke-test openWakeWord inference (no microphone)
         run: docker run --rm hestia-listener:ci python -c "import numpy as np; from listener.wake import WakeDetector; w = WakeDetector('hey jarvis'); w.predict(np.zeros(1280, dtype=np.int16))"
+
+  rust-core:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core-rs
+      - name: Rust tests and compilation
+        run: cargo test --manifest-path core-rs/Cargo.toml

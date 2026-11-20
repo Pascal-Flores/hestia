@@ -10,7 +10,10 @@ TOOLS = Path(__file__).resolve().parents[1] / "tools"
 
 def test_discovers_example_tools():
     tools = load_tools(TOOLS)
-    assert set(tools) == {"math.add", "system.time", "system.uptime"}
+    assert {"math.add", "system.time", "system.uptime"}.issubset(set(tools))
+    assert {"math.calculate", "weather.current", "weather.forecast", "web.search",
+            "music.search", "music.radio", "music.play_radio", "knowledge.wikipedia",
+            "finance.exchange", "random.dice"}.issubset(set(tools))
     assert len(tools["math.add"].examples) >= 3
     assert tools["math.add"].steps[0]["uses"] == "ai.extract"
 
