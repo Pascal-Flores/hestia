@@ -8,7 +8,7 @@ qu'après une activation vocale.
 ## Pipeline réel
 
 ```text
-Micro ALSA (48 kHz, mono PCM16)
+Micro ALSA (48 kHz, mono PCM16) -> callback PortAudio non bloquant / file bornée
   -> RNNoise natif (trames de 10 ms, réduction bruit / musique de fond partielle)
   -> filtre passe-bas FIR continu -> 16 kHz PCM16
   -> openWakeWord (ONNX), déclencheur
@@ -63,6 +63,37 @@ Sur certaines machines, l'accès ALSA direct n'utilise pas les périphériques a
 session utilisateur ; dans ce cas utiliser une carte son USB directement accessible,
 ou une configuration ALSA/Pulse/PipeWire spécifique à la machine.
 
+### Si le journal affiche « Microphone overrun »
+
+La première version exécutait RNNoise et openWakeWord sur le même thread que
+`RawInputStream.read()`. Le traitement pouvait dépasser le budget de **80 ms**
+et PortAudio perdait des échantillons. Le service utilise désormais un callback
+PortAudio qui **copie seulement l'audio** dans une file bornée ; le filtrage et
+l'inférence sont exécutés indépendamment. Les blocs les plus anciens sont
+abandonnés lorsque la file sature, plutôt que d'accumuler du retard.
+
+Le service enregistre toutes les 30 secondes les informations suivantes :
+`avg processing`, `max`, `max queued`, `dropped` et `PortAudio overflows`.
+Une moyenne supérieure à 80 ms/bloc indique que le CPU est durablement incapable
+de suivre le temps réel ; la file ne résout que les pics temporaires. Une perte
+pendant l'enregistrement d'une commande annule cette commande pour éviter une
+transcription incomplète. Pour identifier le goulot :
+
+```sh
+docker compose stats listener
+docker compose --profile listener logs -f listener
+# Test temporaire sans RNNoise : changer LISTENER_FILTER=none dans .env,
+# puis redémarrer l'écouteur.
+docker compose --profile listener up -d --force-recreate listener
+```
+
+Si la capture déborde encore, réduire la pression CPU des autres conteneurs,
+notamment `LLM_THREADS` et `STT_CPU_THREADS`, ou augmenter
+`LISTENER_QUEUE_BLOCKS` (16 blocs = 1,28 s ; maximum 128, avec latence accrue).
+`LISTENER_INPUT_LATENCY=high` peut aider certains périphériques ALSA au prix
+d'une latence de capture supplémentaire. L'absence d'overrun ne prouve pas la
+qualité de la détection ; tester wake word et STT après chaque réglage.
+
 ### Wake word de test, puis « Hestia »
 
 **Par défaut le déclencheur est « Hey Jarvis »**, car openWakeWord ne fournit pas de modèle
@@ -106,6 +137,9 @@ wake word et au STT. Les WAV sont enregistrés seulement lors de ce test explici
 | Variable | Défaut | Rôle |
 |---|---|---|
 | `LISTENER_FILTER` | `rnnoise` | `rnnoise` ou `none` (comparaison) |
+| `LISTENER_QUEUE_BLOCKS` | `16` | File audio bornée (80 ms/bloc) ; absorbe les pics CPU |
+| `LISTENER_INPUT_LATENCY` | vide | Latence PortAudio `low` ou `high` |
+| `LISTENER_METRICS_INTERVAL` | `30` | Intervalle du journal de performance, en secondes |
 | `LISTENER_WAKE_MODEL` | `hey jarvis` | Modèle intégré ou chemin ONNX |
 | `LISTENER_WAKE_THRESHOLD` | `0.55` | Score d'activation openWakeWord |
 | `LISTENER_WAKE_CONSECUTIVE` | `1` | Nombre de trames positives de suite |
