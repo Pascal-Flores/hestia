@@ -58,22 +58,45 @@ impl AppState {
   }
   result
  }
- pub async fn llm(&self,system:&str,user:&str,json_mode:bool)->Result<String>{
-  let settings=self.data.read().await.settings.clone();
+ async fn complete(&self,url:&str,model:&str,key:Option<String>,
+                   system:&str,user:&str,json_mode:bool)->Result<String>{
   let mut body=json!({
-   "model":settings.llm_model,"temperature":0,
+   "model":model,"temperature":0,
    "messages":[{"role":"system","content":system},{"role":"user","content":user}]
   });
   if json_mode{body["response_format"]=json!({"type":"json_object"});}
-  let api_key=std::env::var("HESTIA_LLM_API_KEY").ok();
-  let mut request=self.http.post(&settings.llm_url).json(&body);
-  if let Some(key)=api_key{request=request.bearer_auth(key);}
+  let mut request=self.http.post(url).json(&body);
+  if let Some(token)=key.filter(|s|!s.is_empty()){request=request.bearer_auth(token);}
   let response=request.send().await.context("LLM unavailable")?.error_for_status()
     .context("LLM HTTP error")?;
   let payload:Value=response.json().await?;
   let text=payload["choices"][0]["message"]["content"].as_str()
     .ok_or_else(||anyhow!("Malformed LLM response"))?;
   Ok(text.trim().to_string())
+ }
+ pub async fn llm(&self,system:&str,user:&str,json_mode:bool)->Result<String>{
+  let data=self.snapshot().await;
+  let key=data.llm_api_key.or_else(||std::env::var("HESTIA_LLM_API_KEY").ok());
+  self.complete(&data.settings.llm_url,&data.settings.llm_model,key,system,user,json_mode).await
+ }
+ pub async fn fallback_llm(&self,system:&str,user:&str)->Result<String>{
+  let data=self.snapshot().await;
+  if data.settings.fallback_llm_url.trim().is_empty(){
+   return self.llm(system,user,false).await;
+  }
+  let key=data.fallback_api_key.or_else(||std::env::var("HESTIA_FALLBACK_LLM_API_KEY").ok());
+  self.complete(&data.settings.fallback_llm_url,&data.settings.fallback_llm_model,key,
+                system,user,false).await
+ }
+ pub async fn set_llm_keys(&self,llm:Option<String>,fallback:Option<String>)->Result<()>{
+  let mut data=self.data.write().await;
+  if let Some(k)=llm {
+   data.llm_api_key=if k=="__CLEAR__"{None}else if k.is_empty(){data.llm_api_key.clone()}else{Some(k)};
+  }
+  if let Some(k)=fallback{
+   data.fallback_api_key=if k=="__CLEAR__"{None}else if k.is_empty(){data.fallback_api_key.clone()}else{Some(k)};
+  }
+  drop(data);self.save().await
  }
  pub async fn record(&self,source:&str,id:&str,status:&str,text:&str){
   let mut data=self.data.write().await;
@@ -91,7 +114,10 @@ impl AppState {
      !(0.0..=1.0).contains(&settings.route_min_margin)||
      settings.llm_model.is_empty()||
      ![&settings.llm_url,&settings.stt_url,&settings.tts_url]
-         .iter().all(|url|url.starts_with("http://")||url.starts_with("https://")){
+         .iter().all(|url|url.starts_with("http://")||url.starts_with("https://"))||
+     (!settings.fallback_llm_url.is_empty() &&
+       !(settings.fallback_llm_url.starts_with("http://")||
+         settings.fallback_llm_url.starts_with("https://"))){
       return Err(anyhow!("Invalid LLM/routing/audio settings"));
   }
   self.data.write().await.settings=settings;self.save().await

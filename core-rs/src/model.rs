@@ -73,6 +73,10 @@ impl Default for PluginSettings {
 pub struct Settings {
     pub llm_url: String,
     pub llm_model: String,
+    #[serde(default)]
+    pub fallback_llm_url: String,
+    #[serde(default)]
+    pub fallback_llm_model: String,
     pub stt_url: String,
     pub tts_url: String,
     pub route_min_score: f32,
@@ -86,6 +90,9 @@ impl Default for Settings {
             llm_url: std::env::var("HESTIA_LLM_URL")
                 .unwrap_or_else(|_| "http://llm:8080/v1/chat/completions".into()),
             llm_model: std::env::var("HESTIA_LLM_MODEL")
+                .unwrap_or_else(|_| "hestia-local".into()),
+            fallback_llm_url: std::env::var("HESTIA_FALLBACK_LLM_URL").unwrap_or_default(),
+            fallback_llm_model: std::env::var("HESTIA_FALLBACK_LLM_MODEL")
                 .unwrap_or_else(|_| "hestia-local".into()),
             stt_url: std::env::var("HESTIA_STT_URL")
                 .unwrap_or_else(|_| "http://stt:8001/v1/transcribe".into()),
@@ -130,6 +137,10 @@ pub struct RunLog {
 pub struct SavedData {
     #[serde(default)]
     pub settings: Settings,
+    #[serde(default)]
+    pub llm_api_key: Option<String>,
+    #[serde(default)]
+    pub fallback_api_key: Option<String>,
     #[serde(default)]
     pub plugins: HashMap<String, PluginSettings>,
     #[serde(default)]

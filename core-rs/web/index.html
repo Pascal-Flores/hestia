@@ -89,6 +89,8 @@ table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid var(--li
    <div class="grid">
     <div class="field"><label>URL LLM (OpenAI compatible)</label><input name="llm_url"></div>
     <div class="field"><label>Modèle LLM</label><input name="llm_model"></div>
+    <div class="field"><label>URL grand LLM de secours (optionnel)</label><input name="fallback_llm_url" placeholder="https://.../v1/chat/completions"></div>
+    <div class="field"><label>Modèle de secours</label><input name="fallback_llm_model"></div>
     <div class="field"><label>URL STT</label><input name="stt_url"></div>
     <div class="field"><label>URL Pocket TTS</label><input name="tts_url"></div>
     <div class="field"><label>Seuil de routage</label><input name="route_min_score" type="number" min="0" max="1" step=".005"></div>
@@ -97,6 +99,14 @@ table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid var(--li
     <div class="field"><label><input name="normalize_numbers" type="checkbox"> Lire les nombres en toutes lettres</label></div>
    </div>
    <button type="submit">Sauvegarder</button></form>
+   <hr style="border:0;border-top:1px solid var(--line);margin:18px 0">
+   <h3>Clés des modèles</h3>
+   <p class="small">Une valeur vide laisse la clé existante inchangée. Les clés ne sont jamais renvoyées en clair.</p>
+   <div class="grid">
+    <div class="field"><label>Clé API LLM principal</label><input id="llmKey" type="password" autocomplete="off" placeholder="Vide = inchangé"></div>
+    <div class="field"><label>Clé API LLM de secours</label><input id="fallbackKey" type="password" autocomplete="off" placeholder="Vide = inchangé"></div>
+   </div><button id="saveKeys">Enregistrer les clés</button>
+   <p id="keyStatus" class="small"></p>
    <p class="small">Ces paramètres sont appliqués à chaud au cœur Rust. Les paramètres matériels du listener (microphone, wake word) et le chargement des modèles des conteneurs restent dans le fichier .env.</p>
   </div>
  </section>
@@ -206,6 +216,18 @@ async function loadSettings(){
   if(el){if(el.type==='checkbox')el.checked=settings[k];else el.value=settings[k]}
  });
 }
+async function loadKeys(){
+ try{var status=await api('/api/admin/llm-keys');
+ $('keyStatus').textContent='Clé principale : '+(status.llm_api_key?'configurée':'non configurée')+
+   ' · Clé secours : '+(status.fallback_api_key?'configurée':'non configurée');
+ }catch(e){$('keyStatus').textContent=e.message}
+}
+$('saveKeys').onclick=async function(){
+ var llm=$('llmKey').value,backup=$('fallbackKey').value;
+ try{await api('/api/admin/llm-keys','PUT',{llm_api_key:llm||null,fallback_api_key:backup||null});
+  $('llmKey').value='';$('fallbackKey').value='';await loadKeys();toast('Clés enregistrées');
+ }catch(e){toast(e.message,true)}
+};
 $('settingsForm').onsubmit=async function(event){
  event.preventDefault();var form=event.target;var payload={};
  Object.keys(settings).forEach(function(k){var el=form.elements.namedItem(k);
@@ -216,7 +238,7 @@ $('settingsForm').onsubmit=async function(event){
  catch(e){toast(e.message,true)}
 };
 async function refreshAll(){
- await Promise.allSettled([loadHealth(),loadHistory(),loadPlugins(),loadSettings(),loadJobs(),loadJobTools()]);
+ await Promise.allSettled([loadHealth(),loadHistory(),loadPlugins(),loadSettings(),loadKeys(),loadJobs(),loadJobTools()]);
 }
 refreshAll();
 })();

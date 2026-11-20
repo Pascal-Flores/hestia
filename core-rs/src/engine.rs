@@ -110,7 +110,7 @@ impl Engine {
    "matched"=>self.run_tool(state,route.tool_id.as_deref().unwrap_or(""),message,None,context,confirmed,0).await,
    "ambiguous"=>Outcome::message("ambiguous",format!("Peux-tu préciser ? J'hésite entre : {}.",
      route.candidates.iter().take(2).map(|x|x.tool_id.as_str()).collect::<Vec<_>>().join(", "))),
-   _=>match state.llm("Tu es Hestia. Réponds en français. Aucune action n'a été effectuée.",message,false).await{
+   _=>match state.fallback_llm("Tu es Hestia. Réponds en français. Aucune action n'a été effectuée.",message).await{
       Ok(text)=>Outcome::message("conversation",text),
       Err(_)=>Outcome::message("no_tool","Aucun outil ne correspond à cette demande.")
    }

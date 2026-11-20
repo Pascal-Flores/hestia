@@ -29,6 +29,8 @@ struct PluginPatch{
 }
 #[derive(Deserialize)]
 struct RunRequest{#[serde(default)]args:Value}
+#[derive(Deserialize)]
+struct KeysPatch{llm_api_key:Option<String>,fallback_api_key:Option<String>}
 pub fn routes(state:Arc<AppState>)->Router{
  Router::new()
  .route("/",get(index))
@@ -42,6 +44,7 @@ pub fn routes(state:Arc<AppState>)->Router{
  .route("/v1/audio/transcribe",post(transcribe))
  .route("/v1/audio/ask",post(ask))
  .route("/api/admin/settings",get(get_settings).put(put_settings))
+ .route("/api/admin/llm-keys",get(get_llm_keys).put(put_llm_keys))
  .route("/api/admin/plugins",get(plugins))
  .route("/api/admin/plugins/{id}",post(update_plugin))
  .route("/api/admin/schedules",get(schedules).post(save_schedule))
@@ -113,6 +116,20 @@ async fn put_settings(State(state):State<Arc<AppState>>,headers:HeaderMap,
  match state.set_settings(settings).await{
   Ok(())=>Json(json!({"ok":true})).into_response(),
   Err(e)=>err(StatusCode::BAD_REQUEST,e).into_response()
+ }
+}
+async fn get_llm_keys(State(state):State<Arc<AppState>>,headers:HeaderMap)->Response{
+ if let Err(e)=auth(&headers){return e.into_response();}
+ let data=state.snapshot().await;
+ Json(json!({"llm_api_key":data.llm_api_key.as_ref().is_some_and(|x|!x.is_empty()),
+   "fallback_api_key":data.fallback_api_key.as_ref().is_some_and(|x|!x.is_empty())})).into_response()
+}
+async fn put_llm_keys(State(state):State<Arc<AppState>>,headers:HeaderMap,
+ Json(p):Json<KeysPatch>)->Response{
+ if let Err(e)=auth(&headers){return e.into_response();}
+ match state.set_llm_keys(p.llm_api_key,p.fallback_api_key).await{
+   Ok(())=>Json(json!({"ok":true})).into_response(),
+   Err(e)=>err(StatusCode::INTERNAL_SERVER_ERROR,e).into_response()
  }
 }
 async fn plugins(State(state):State<Arc<AppState>>,headers:HeaderMap)->Response{
