@@ -1,0 +1,25 @@
+# Build the small RNNoise C library once; no large speech-separation model needed.
+# RNNoise downloads its open model data during autogen.sh.
+FROM debian:bookworm-slim AS rnnoise-build
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates wget git autoconf automake libtool pkg-config make gcc \
+    && rm -rf /var/lib/apt/lists/*
+RUN git clone --depth 1 https://github.com/xiph/rnnoise.git /src/rnnoise \
+    && cd /src/rnnoise && ./autogen.sh && ./configure --prefix=/usr/local \
+    && make -j2 && make install
+
+FROM python:3.11-slim-bookworm
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 \
+    OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 \
+    LISTENER_FILTER=rnnoise
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libportaudio2 libasound2 libgomp1 libstdc++6 \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=rnnoise-build /usr/local/lib/ /usr/local/lib/
+RUN ldconfig
+WORKDIR /app
+RUN pip install --no-cache-dir 'numpy>=1.26,<3' 'sounddevice>=0.4,<1' \
+    'httpx>=0.27,<1' 'openwakeword==0.6.0' \
+    && python -c "import openwakeword; openwakeword.utils.download_models()"
+COPY services/listener ./listener
+CMD ["python", "-m", "listener.app"]

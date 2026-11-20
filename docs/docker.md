@@ -10,6 +10,7 @@ Pour un déploiement sans conteneurs et des moteurs STT/TTS natifs, voir [native
 | `llm` | 8080 | `llama.cpp:server` (Qwen3 0.6B GGUF quantifié 4 bits) |
 | `stt` | 8001 | faster-whisper, français, int8 CPU, modèle persistent |
 | `tts` | 8000 | Pocket TTS officiel `serve`, français, modèle persistent |
+| `listener` (opt-in) | aucun | Micro ALSA, RNNoise, openWakeWord, capture, lecture TTS |
 
 Tous les services partagent un réseau Docker privé. **Seul Hestia est publié sur l'hôte**, à
 `127.0.0.1:8765` ; il ne faut pas exposer ce déploiement directement sur Internet.
@@ -91,7 +92,7 @@ PY
 ```
 
 Le mode V1 utilise du JSON avec WAV encodé en base64 : **ce n'est pas du streaming** et il
-ne propose pas encore d'écoute continue/mot d'activation. Les microcontrôleurs pourront
+propose un écouteur microphone avec wake word via le profil `listener` (voir [listener.md](listener.md)). Les microcontrôleurs pourront
 appeler cette API depuis le réseau local après sécurisation.
 
 ### Outils
@@ -140,6 +141,6 @@ Pour arrêter : `docker compose down`. Pour supprimer **aussi les modèles mis e
   conteneurs ou restrictions supplémentaires pour les outils tiers.
 - Le routage E5 reste à calibrer sur des requêtes positives/négatives en français. Les seuils
   par défaut ne sont **pas** des probabilités ni des niveaux de confiance éprouvés.
-- L'API est locale et sans wake word ; pas encore d'audio streaming, de suivi conversationnel
+- L'API est locale ; le wake word du service `listener` est facultatif. Pas encore d'audio streaming ni de suivi conversationnel
   ou de réelle intégration Home Assistant.
 - En cas d'échec d'installation ARM, tester l'empilement sur x86_64 ou séparer le TTS du Pi.

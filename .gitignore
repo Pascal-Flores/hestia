@@ -12,3 +12,7 @@ __pycache__/
 # Native model/process caches and secrets
 .native/
 native.env
+# Audio diagnostics / custom models
+recordings/*.wav
+models/wakeword/*.onnx
+models/wakeword/*.tflite

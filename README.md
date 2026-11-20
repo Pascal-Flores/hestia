@@ -12,7 +12,7 @@ Prototype d'assistant vocal **local-first** et extensible. Un outil est un dossi
 4. Les étapes `python.call`, `tool.call`, `core.template` et `ai.respond` exécutent le workflow défini par l'outil. Les sorties sont référencées par `${{ steps.<id>.output }}` ; aucune expression arbitraire n'est évaluée.
 5. Les demandes sans outil peuvent être transmises à un modèle de conversation plus puissant en configurant une URL de repli.
 
-Le moteur est text-first : il sait déjà transcrire un fichier audio via faster-whisper et produire un WAV avec Pocket TTS, mais la boucle micro/wake-word, le streaming et les automatismes Home Assistant ne sont **pas** encore intégrés.
+Le moteur API reste text-first ; la capture du micro et la détection du wake word sont prises en charge par le service Docker `listener` optionnel. Le streaming et les automatismes Home Assistant restent à développer.
 
 ## Déploiement natif recommandé (sans Docker)
 
@@ -65,6 +65,26 @@ curl -s http://127.0.0.1:8765/v1/chat \
 Pour le STT/TTS et le tour complet audio, voir **[docs/docker.md](docs/docker.md)**.
 Les outils sont montés depuis `./tools` en lecture seule. Après ajout d'un manifeste,
 `POST /v1/tools/reload` reconstruit l'index sans reconstruire les images.
+
+
+### Écoute permanente (Docker, optionnelle)
+
+Un cinquième service `listener` peut capturer le microphone local, appliquer **RNNoise**
+avant le wake word et le STT, reconnaître un mot d'activation openWakeWord, enregistrer
+la commande puis jouer le WAV de Pocket TTS. Il n'est **pas** activé par défaut :
+
+```sh
+docker compose --profile listener up -d --build
+docker compose --profile listener logs -f listener
+```
+
+Le wake word livré pour test est **« Hey Jarvis »**, pas « Hestia » : il faut fournir un
+modèle ONNX personnalisé pour prononcer « Hestia ». RNNoise atténue certains bruits et
+une partie de la musique, mais ne garantit **pas** une séparation musicale complète.
+Linux + accès micro/haut-parleur ALSA (`/dev/snd`) requis.
+
+Voir [docs/listener.md](docs/listener.md) pour le choix des périphériques, l'entraînement
+d'un modèle, les paramètres de sensibilité et l'enregistrement de comparaison brut/nettoyé.
 
 ## Installation
 
@@ -124,7 +144,7 @@ Les scripts sont exécutés dans un sous-processus Python `-I`, avec délai et v
     # SoX doit être installé pour le profil vocal optionnel `mii`
     hestia voice-file --input requete.wav --output reponse.wav --profile mii
 
-`voice-file` utilise `faster-whisper` local (par défaut `tiny`, français), puis le même workflow, puis `pocket-tts generate --language french`. Le profil `mii` applique un effet SoX simple (pitch + filtre), **pas** une émulation des voix Nintendo. Pocket TTS est lancé par commande pour ce prototype : pour réduire la latence il faudra un serveur TTS persistant ou l'API de streaming. Aucun micro en écoute continue n'est livré dans cette V1.
+`voice-file` utilise `faster-whisper` local (par défaut `tiny`, français), puis le même workflow, puis `pocket-tts generate --language french`. Le profil `mii` applique un effet SoX simple (pitch + filtre), **pas** une émulation des voix Nintendo. Pocket TTS est lancé par commande pour ce prototype : pour réduire la latence il faudra un serveur TTS persistant ou l'API de streaming. Un écouteur micro en continu est disponible via le profil Docker `listener`, mais pas via la CLI native.
 
 ## Tests
 
