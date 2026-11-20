@@ -1,5 +1,6 @@
 use std::{str::FromStr,sync::Arc};
 use chrono::{DateTime,Duration,Utc};
+use chrono_tz::Tz;
 use cron::Schedule;
 use serde_json::json;
 use tokio::time::{interval,Duration as TokioDuration};
@@ -22,6 +23,7 @@ pub fn validate_job(job:&ScheduleJob)->anyhow::Result<()>{
   anyhow::bail!("Invalid schedule ID");
  }
  let _=parse_cron(&job.cron)?;
+ let _:Tz=job.timezone.parse().map_err(|_|anyhow::anyhow!("Fuseau horaire inconnu"))?;
  if !job.args.is_object(){anyhow::bail!("Scheduled tool arguments must be JSON object");}
  Ok(())
 }
@@ -36,7 +38,10 @@ pub fn spawn_scheduler(state:Arc<AppState>){
     let schedule=match parse_cron(&job.cron){Ok(x)=>x,Err(_)=>continue};
     // No long catch-up after downtime: only a firing time within the last 5s.
     let from=now-Duration::seconds(6);
-    let due=schedule.after(&from).next().is_some_and(|date|date<=now);
+    let timezone:Tz=match job.timezone.parse(){Ok(t)=>t,Err(_)=>continue};
+    let localized_from=from.with_timezone(&timezone);
+    let localized_now=now.with_timezone(&timezone);
+    let due=schedule.after(&localized_from).next().is_some_and(|date|date<=localized_now);
     if !due{continue;}
     let last=job.last_run.as_ref().and_then(|x|DateTime::parse_from_rfc3339(x).ok())
       .map(|t|t.with_timezone(&Utc));

@@ -87,8 +87,9 @@ steps:
 
 La page « Récurrences » permet de créer des tâches utilisant un outil marqué
 `schedule_allowed: true`. Une récurrence contient : identifiant, outil,
-cron à **5 champs UTC**, paramètres JSON préremplis, état activé/désactivé.
-Exemple : `0 7 * * *` = tous les jours à 07:00 UTC. Les outils demandant
+cron à **5 champs**, fuseau horaire (Europe/Paris par défaut), paramètres
+JSON préremplis, état activé/désactivé. Exemple : `0 7 * * *`
+= tous les jours à 07:00 dans le fuseau choisi. Les outils demandant
 confirmation et les outils inconnus/désactivés ne peuvent pas être programmés.
 
 Le scheduler déclenche directement le workflow avec ses paramètres : pas

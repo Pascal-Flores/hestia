@@ -9,6 +9,7 @@ description = "Rust Hestia server, semantic router, tool workflows and scheduler
 anyhow = "1"
 axum = { version = "0.8", features = ["multipart"] }
 chrono = { version = "0.4", features = ["serde"] }
+chrono-tz = "0.10"
 cron = "0.15"
 fastembed = "7"
 num2words = "1.2"

@@ -114,6 +114,8 @@ pub struct ScheduleJob {
     pub id: String,
     pub tool_id: String,
     pub cron: String,
+    #[serde(default="default_timezone")]
+    pub timezone: String,
     #[serde(default)]
     pub args: Value,
     #[serde(default="enabled")]
@@ -123,6 +125,8 @@ pub struct ScheduleJob {
     #[serde(default)]
     pub last_status: Option<String>,
 }
+
+fn default_timezone() -> String { "Europe/Paris".into() }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunLog {

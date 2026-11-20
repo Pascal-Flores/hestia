@@ -75,11 +75,12 @@ table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid var(--li
    <div class="grid">
     <div class="field"><label>Identifiant unique</label><input id="jobId" placeholder="meteo_matinale"></div>
     <div class="field"><label>Outil autorisé</label><select id="jobTool"></select></div>
-    <div class="field"><label>Expression cron (UTC, 5 champs)</label><input id="jobCron" value="0 7 * * *"></div>
+    <div class="field"><label>Expression cron (5 champs)</label><input id="jobCron" value="0 7 * * *"></div>
+    <div class="field"><label>Fuseau horaire</label><select id="jobTz"><option value="Europe/Paris">Europe/Paris</option><option value="UTC">UTC</option></select></div>
     <div class="field"><label>Paramètres JSON de l'outil</label><textarea id="jobArgs">{}</textarea></div>
    </div>
    <div class="row"><label><input type="checkbox" id="jobEnabled" checked> Activée</label><button id="saveJob">Enregistrer</button></div>
-   <p class="small">Exemple : <code>0 7 * * *</code> = tous les jours à 07:00 UTC. Aucun outil demandant confirmation ne peut être lancé automatiquement.</p>
+   <p class="small">Exemple : <code>0 7 * * *</code> = tous les jours à 07:00 dans le fuseau sélectionné. Aucun outil demandant confirmation ne peut être lancé automatiquement.</p>
   </div>
   <div id="scheduleList"></div>
  </section>
@@ -183,7 +184,7 @@ async function loadJobs(){
  currentJobs=await api('/api/admin/schedules');
  $('scheduleList').innerHTML=currentJobs.length?currentJobs.map(function(j){
   return '<div class="card" data-job="'+escape(j.id)+'"><div class="row wrap"><h3 style="flex:1">'+escape(j.id)+'</h3>'+
-   '<span class="pill">'+escape(j.enabled?'Activée':'Pause')+'</span></div><p>'+escape(j.tool_id)+' · '+escape(j.cron)+
+   '<span class="pill">'+escape(j.enabled?'Activée':'Pause')+'</span></div><p>'+escape(j.tool_id)+' · '+escape(j.cron)+' · '+escape(j.timezone)+
    '</p><p class="small">Dernière exécution : '+escape(j.last_run||'jamais')+' · '+escape(j.last_status||'aucun résultat')+'</p>'+
    '<button class="ghost" data-edit>Modifier</button> <button class="danger" data-delete>Supprimer</button></div>';
  }).join(''):'<div class="card"><p>Aucune tâche récurrente.</p></div>';
@@ -196,7 +197,8 @@ async function loadJobs(){
   card.querySelector('[data-edit]').onclick=function(){
    var j=currentJobs.find(function(x){return x.id===id});
    $('jobId').value=j.id;$('jobTool').value=j.tool_id;
-   $('jobCron').value=j.cron;$('jobArgs').value=JSON.stringify(j.args,null,2);
+   $('jobCron').value=j.cron;$('jobTz').value=j.timezone;
+   $('jobArgs').value=JSON.stringify(j.args,null,2);
    $('jobEnabled').checked=j.enabled;window.scrollTo({top:0,behavior:'smooth'});
   };
  });
@@ -204,7 +206,8 @@ async function loadJobs(){
 $('saveJob').onclick=async function(){
  try{
   var job={id:$('jobId').value.trim(),tool_id:$('jobTool').value,
-   cron:$('jobCron').value,args:JSON.parse($('jobArgs').value),enabled:$('jobEnabled').checked};
+   cron:$('jobCron').value,timezone:$('jobTz').value,
+   args:JSON.parse($('jobArgs').value),enabled:$('jobEnabled').checked};
   await api('/api/admin/schedules','POST',job);toast('Récurrence enregistrée');loadJobs();
  }catch(e){toast(e.message,true)}
 };
