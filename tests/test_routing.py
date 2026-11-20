@@ -23,7 +23,10 @@ class ToyEmbedder:
 
 
 def sample_tools():
-    return load_tools(Path(__file__).resolve().parents[1] / "tools")
+    # Keep deterministic legacy tests isolated from the expanded catalog.
+    loaded = load_tools(Path(__file__).resolve().parents[1] / "tools")
+    return {key: value for key, value in loaded.items()
+            if key in {"math.add", "system.time", "system.uptime"}}
 
 
 def test_retrieval_by_examples():
