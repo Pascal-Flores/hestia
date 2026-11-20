@@ -77,7 +77,7 @@ services:
       dockerfile: docker/Dockerfile.stt
     restart: unless-stopped
     environment:
-      STT_MODEL: ${STT_MODEL:-tiny}
+      STT_MODEL: ${STT_MODEL:-base}
       STT_LANGUAGE: ${STT_LANGUAGE:-fr}
       STT_CPU_THREADS: ${STT_CPU_THREADS:-2}
       HF_HOME: /cache/hf

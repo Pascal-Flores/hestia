@@ -16,7 +16,7 @@ MAX_AUDIO_BYTES = 10 * 1024 * 1024
 async def lifespan(app: FastAPI):
     from faster_whisper import WhisperModel
     app.state.model = WhisperModel(
-        os.getenv("STT_MODEL", "tiny"),
+        os.getenv("STT_MODEL", "base"),
         device="cpu", compute_type="int8",
         cpu_threads=int(os.getenv("STT_CPU_THREADS", "2")),
     )

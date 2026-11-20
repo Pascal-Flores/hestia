@@ -9,7 +9,7 @@ import tempfile
 from .speech import normalize_for_speech
 
 
-def transcribe(wav_file: str | Path, *, model_name: str = "tiny", language: str = "fr") -> str:
+def transcribe(wav_file: str | Path, *, model_name: str = "base", language: str = "fr") -> str:
     """Transcribe a recorded file locally with faster-whisper (optional dependency)."""
     try:
         from faster_whisper import WhisperModel

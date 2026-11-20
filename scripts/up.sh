@@ -38,7 +38,7 @@ case "$profile" in
     4g)
         set_if_undefined LLM_HF_REPO 'bartowski/Qwen_Qwen3-0.6B-GGUF:Q4_K_M'
         set_if_undefined LLM_CONTEXT 2048
-        set_if_undefined STT_MODEL tiny
+        set_if_undefined STT_MODEL base
         ;;
     8g)
         set_if_undefined LLM_HF_REPO 'bartowski/Qwen_Qwen3-1.7B-GGUF:Q4_K_M'

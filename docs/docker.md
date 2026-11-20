@@ -8,7 +8,7 @@ Pour un déploiement sans conteneurs et des moteurs STT/TTS natifs, voir [native
 |---|---|---|
 | `hestia` | 8765 | API FastAPI, index d'embeddings ONNX, workflows YAML |
 | `llm` | 8080 | `llama.cpp:server` (Qwen3 0.6B GGUF quantifié 4 bits) |
-| `stt` | 8001 | faster-whisper, français, int8 CPU, modèle persistent |
+| `stt` | 8001 | faster-whisper, français, INT8 CPU, modèle `base` conservé en mémoire |
 | `tts` | 8000 | Pocket TTS officiel `serve`, français, modèle persistent |
 | `listener` (opt-in) | aucun | Micro ALSA, RNNoise, openWakeWord, capture, lecture TTS |
 
@@ -126,6 +126,37 @@ conteneur `hestia`. Après ajout d'un outil, reconstruire l'index :
 curl -X POST http://127.0.0.1:8765/v1/tools/reload
 curl http://127.0.0.1:8765/v1/tools
 ```
+
+## Qualité de transcription STT
+
+Pour les commandes vocales en français, le profil Docker standard utilise
+**Whisper Base** multilingue (74 millions de paramètres) au lieu de Tiny
+(39 millions). Le modèle est chargé une seule fois, en INT8 CPU, puis
+mis en cache dans le volume Docker. Les paramètres de routage et les
+prompts des outils ne changent pas.
+
+Pour sélectionner une autre taille, renseigner `STT_MODEL` dans `.env` :
+
+```dotenv
+STT_MODEL=base
+```
+
+Choisir `small` sur une machine disposant de plus de RAM si Base ne
+transcrit pas correctement ; `tiny` reste possible sur une machine
+très contrainte. Le script `./scripts/up.sh` conserve Tiny pour le
+profil mémoire expérimental `2g` et Base pour `4g` / `8g`.
+Une valeur explicite dans `.env` a priorité sur ces profils.
+
+```sh
+docker compose up -d --no-deps --force-recreate stt
+docker compose --profile listener logs -f listener
+```
+
+Pour comparer les résultats sur le même enregistrement, activer
+`LISTENER_DEBUG_AUDIO=1` et renvoyer `recordings/last-command.wav`
+à `/v1/audio/transcribe`. Une transcription médiocre peut également
+venir d'un enregistrement coupé ou d'un filtrage excessif, indépendamment
+de la taille du modèle.
 
 ## Configuration
 

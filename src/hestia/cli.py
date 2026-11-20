@@ -34,7 +34,7 @@ def main(argv: list[str] | None = None) -> int:
     voice_parser = commands.add_parser("voice-file", help="Transcribe WAV, run workflow, synthesize response")
     voice_parser.add_argument("--input", required=True, type=Path)
     voice_parser.add_argument("--output", required=True, type=Path)
-    voice_parser.add_argument("--whisper-model", default="tiny")
+    voice_parser.add_argument("--whisper-model", default="base")
     voice_parser.add_argument("--tts-language", default="french")
     voice_parser.add_argument("--voice", default=None)
     voice_parser.add_argument("--profile", choices=["natural", "mii"], default="natural")

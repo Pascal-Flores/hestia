@@ -34,7 +34,7 @@ Python, Bash ou des exécutables C/Rust via `exec.call` et JSON sur stdin/stdout
 ## Déploiement Docker Compose (optionnel pour les tests)
 
 La stack CPU pré-configurée utilise **llama.cpp** (Qwen3-0.6B GGUF), **FastEmbed/ONNX**
-(E5 multilingue), **faster-whisper** (`tiny` français) et **Pocket TTS** (`french`, voix `estelle`).
+(E5 multilingue), **faster-whisper** (`base` multilingue français, INT8 CPU) et **Pocket TTS** (`french`, voix `estelle`).
 Elle est conçue pour Linux x86_64 et ARM64 ; le Raspberry Pi 5 8 Go est une cible de test,
 **pas** une garantie de performances temps réel. L'UNO Q 4 Go est trop contraint pour
 recommander cette stack complète. La première initialisation télécharge plusieurs modèles.
