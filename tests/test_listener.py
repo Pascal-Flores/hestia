@@ -12,6 +12,9 @@ import numpy as np
 import pytest
 import yaml
 
+# The listener is deliberately not installed into the Hestia API package.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from services.listener.client import HestiaClient, decode_wav
 from services.listener.dsp import (
     AudioPreprocessor, BLOCK_SAMPLES, RNNOISE_FRAME, StreamingDecimator,
