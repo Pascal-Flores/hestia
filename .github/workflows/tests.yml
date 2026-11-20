@@ -42,3 +42,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: docker build --file docker/Dockerfile.listener --tag hestia-listener:ci .
+      - name: Smoke-test native RNNoise library
+        run: docker run --rm hestia-listener:ci python -c "from listener.dsp import RNNoise; d = RNNoise(); d.close()"
+      - name: Smoke-test openWakeWord inference (no microphone)
+        run: docker run --rm hestia-listener:ci python -c "import numpy as np; from listener.wake import WakeDetector; w = WakeDetector('hey jarvis'); w.predict(np.zeros(1280, dtype=np.int16))"
