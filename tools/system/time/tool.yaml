@@ -1,0 +1,24 @@
+id: system.time
+name: Donner l'heure locale
+description: Répond à une demande concernant l'heure du système
+routing:
+  examples:
+    - Quelle heure est-il ?
+    - Donne-moi l'heure actuelle
+    - Il est quelle heure ?
+inputs:
+  type: object
+  additionalProperties: false
+  properties: {}
+steps:
+  - id: execute
+    uses: python.call
+    with:
+      entrypoint: main.py:run
+      arguments: {}
+      timeout: 5
+  - id: respond
+    uses: core.template
+    with:
+      data: ${{ steps.execute.output }}
+      template: "Il est {{ hour }}."
