@@ -1,0 +1,9 @@
+services:
+  hestia:
+    mem_limit: 700m
+  llm:
+    mem_limit: 1100m
+  stt:
+    mem_limit: 600m
+  tts:
+    mem_limit: 1100m

@@ -1,0 +1,35 @@
+id: math.add
+name: Additionner deux nombres
+description: Calcule la somme de deux nombres
+routing:
+  examples:
+    - Calcule la somme de 12 et 30
+    - Combien font 4 plus 8 ?
+    - Additionne ces deux nombres
+    - Fais une addition
+inputs:
+  type: object
+  additionalProperties: false
+  properties:
+    a: {type: number, description: Premier nombre}
+    b: {type: number, description: Deuxième nombre}
+  required: [a, b]
+steps:
+  - id: extract
+    uses: ai.extract
+    with:
+      prompt: |
+        Extrais uniquement les deux opérandes a et b.
+        Ne calcule pas la somme toi-même.
+        Si l'un des nombres manque, demande une précision.
+  - id: execute
+    uses: python.call
+    with:
+      entrypoint: main.py:run
+      arguments: ${{ steps.extract.output }}
+      timeout: 5
+  - id: respond
+    uses: ai.respond
+    with:
+      data: ${{ steps.execute.output }}
+      prompt: Réponds simplement avec la somme fournie par le script.

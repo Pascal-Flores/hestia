@@ -1,0 +1,11 @@
+# Experimental budget: caps sum to 1760 MiB. System/Docker overhead is additional.
+# This does not prove the full stack can operate below 2 GiB; validate with real models.
+services:
+  hestia:
+    mem_limit: 380m
+  llm:
+    mem_limit: 620m
+  stt:
+    mem_limit: 290m
+  tts:
+    mem_limit: 470m

@@ -1,0 +1,184 @@
+# Hestia local CPU stack (linux/amd64 and linux/arm64).
+# Public port: only Hestia's API. The three model services remain internal.
+services:
+  hestia:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    restart: unless-stopped
+    environment:
+      HESTIA_TOOLS_DIR: /app/tools
+      HESTIA_EMBEDDING_BACKEND: fastembed
+      HESTIA_EMBEDDING_MODEL: ${HESTIA_EMBEDDING_MODEL:-intfloat/multilingual-e5-small}
+      HESTIA_EMBEDDING_CACHE: /cache/embeddings
+      HESTIA_ROUTE_MIN_SCORE: ${HESTIA_ROUTE_MIN_SCORE:-0.80}
+      HESTIA_ROUTE_MIN_MARGIN: ${HESTIA_ROUTE_MIN_MARGIN:-0.035}
+      HESTIA_ALLOWED_PERMISSIONS: ${HESTIA_ALLOWED_PERMISSIONS:-}
+      HESTIA_API_KEY: ${HESTIA_API_KEY:-}
+      HESTIA_LLM_URL: http://llm:8080/v1/chat/completions
+      HESTIA_LLM_MODEL: hestia-local
+      HESTIA_LLM_TIMEOUT: ${HESTIA_LLM_TIMEOUT:-180}
+      HESTIA_FALLBACK_LLM_URL: ${HESTIA_FALLBACK_LLM_URL:-http://llm:8080/v1/chat/completions}
+      HESTIA_FALLBACK_LLM_MODEL: ${HESTIA_FALLBACK_LLM_MODEL:-hestia-local}
+      HESTIA_FALLBACK_LLM_API_KEY: ${HESTIA_FALLBACK_LLM_API_KEY:-}
+      HESTIA_STT_URL: http://stt:8001/v1/transcribe
+      HESTIA_TTS_URL: http://tts:8000/tts
+      HESTIA_VOICE_PROFILE: ${HESTIA_VOICE_PROFILE:-natural}
+      HESTIA_TTS_NORMALIZE_NUMBERS: ${HESTIA_TTS_NORMALIZE_NUMBERS:-1}
+      OMP_NUM_THREADS: '2'
+    volumes:
+      - ./tools:/app/tools:ro
+      - embedding_cache:/cache/embeddings
+    ports:
+      - "${HESTIA_BIND_IP:-127.0.0.1}:${HESTIA_PORT:-8765}:8765"
+    depends_on:
+      - llm
+      - stt
+      - tts
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/health/live',timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 120s
+    security_opt:
+      - no-new-privileges:true
+
+  llm:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    restart: unless-stopped
+    command:
+      - --hf-repo
+      - ${LLM_HF_REPO:-bartowski/Qwen_Qwen3-0.6B-GGUF:Q4_K_M}
+      - --host
+      - 0.0.0.0
+      - --port
+      - '8080'
+      - --alias
+      - hestia-local
+      - --reasoning
+      - 'off'
+      - --ctx-size
+      - ${LLM_CONTEXT:-2048}
+      - --threads
+      - ${LLM_THREADS:-2}
+      - --n-predict
+      - ${LLM_MAX_TOKENS:-256}
+    environment:
+      HF_HOME: /cache/hf
+    volumes:
+      - llm_cache:/cache/hf
+    security_opt:
+      - no-new-privileges:true
+
+  stt:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.stt
+    restart: unless-stopped
+    environment:
+      STT_MODEL: ${STT_MODEL:-base}
+      STT_LANGUAGE: ${STT_LANGUAGE:-fr}
+      STT_CPU_THREADS: ${STT_CPU_THREADS:-2}
+      HF_HOME: /cache/hf
+    volumes:
+      - stt_cache:/cache/hf
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health',timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 120s
+    security_opt:
+      - no-new-privileges:true
+
+  tts:
+    build:
+      context: .
+      dockerfile: ${TTS_DOCKERFILE:-docker/Dockerfile.tts-rust}
+    restart: unless-stopped
+    command:
+      - pocket-tts
+      - serve
+      - --host
+      - 0.0.0.0
+      - --port
+      - '8000'
+      - --language
+      - ${TTS_LANGUAGE:-french}
+      - --default-voice
+      - ${TTS_VOICE:-estelle}
+    environment:
+      HF_HOME: /cache/hf
+      OMP_NUM_THREADS: '2'
+      RAYON_NUM_THREADS: ${TTS_THREADS:-2}
+      TTS_QUANTIZE: ${TTS_QUANTIZE:-1}
+    volumes:
+      - tts_cache:/cache/hf
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 120s
+    security_opt:
+      - no-new-privileges:true
+
+
+  # Optional microphone + speaker process. Start with:
+  # docker compose --profile listener up -d --build
+  # Linux ALSA requires /dev/snd; on headless servers use an audio satellite instead.
+  listener:
+    profiles: [listener]
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.listener
+    restart: unless-stopped
+    depends_on:
+      hestia:
+        condition: service_healthy
+    environment:
+      HESTIA_LISTENER_URL: http://hestia:8765/v1/audio/ask
+      HESTIA_API_KEY: ${HESTIA_API_KEY:-}
+      LISTENER_FILTER: ${LISTENER_FILTER:-rnnoise}
+      LISTENER_QUEUE_BLOCKS: ${LISTENER_QUEUE_BLOCKS:-16}
+      LISTENER_INPUT_LATENCY: ${LISTENER_INPUT_LATENCY:-}
+      LISTENER_PORTAUDIO_BLOCKSIZE: ${LISTENER_PORTAUDIO_BLOCKSIZE:-0}
+      LISTENER_METRICS_INTERVAL: ${LISTENER_METRICS_INTERVAL:-30}
+      LISTENER_DEBUG_WAKE: ${LISTENER_DEBUG_WAKE:-0}
+      LISTENER_DIAGNOSTICS_INTERVAL: ${LISTENER_DIAGNOSTICS_INTERVAL:-5}
+      LISTENER_WAKE_MODEL: ${LISTENER_WAKE_MODEL:-hey jarvis}
+      LISTENER_WAKE_THRESHOLD: ${LISTENER_WAKE_THRESHOLD:-0.55}
+      LISTENER_WAKE_CONSECUTIVE: ${LISTENER_WAKE_CONSECUTIVE:-1}
+      LISTENER_INPUT_DEVICE: ${LISTENER_INPUT_DEVICE:-}
+      LISTENER_OUTPUT_DEVICE: ${LISTENER_OUTPUT_DEVICE:-}
+      LISTENER_OUTPUT_RATE: ${LISTENER_OUTPUT_RATE:-0}
+      LISTENER_DEBUG_AUDIO: ${LISTENER_DEBUG_AUDIO:-0}
+      LISTENER_SILENCE: ${LISTENER_SILENCE:-0.85}
+      LISTENER_INITIAL_TIMEOUT: ${LISTENER_INITIAL_TIMEOUT:-3.5}
+      LISTENER_MAX_UTTERANCE: ${LISTENER_MAX_UTTERANCE:-12.0}
+      LISTENER_MIN_VOICE: ${LISTENER_MIN_VOICE:-0.20}
+      LISTENER_RMS_THRESHOLD: ${LISTENER_RMS_THRESHOLD:-0.008}
+      LISTENER_SPEECH_THRESHOLD: ${LISTENER_SPEECH_THRESHOLD:-0.30}
+      LISTENER_RECORD_DIR: /recordings
+      LISTENER_LOG_LEVEL: ${LISTENER_LOG_LEVEL:-INFO}
+      HOME: /tmp
+      XDG_CACHE_HOME: /tmp/.cache
+      OMP_NUM_THREADS: '1'
+    devices:
+      - /dev/snd:/dev/snd
+    user: "${LISTENER_UID:-1000}:${LISTENER_GID:-1000}"
+    group_add:
+      - "${LISTENER_AUDIO_GID:-29}"
+    volumes:
+      - ./models/wakeword:/models/wakeword:ro
+      - ./recordings:/recordings
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  llm_cache:
+  embedding_cache:
+  stt_cache:
+  tts_cache:
