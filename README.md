@@ -14,7 +14,24 @@ Prototype d'assistant vocal **local-first** et extensible. Un outil est un dossi
 
 Le moteur est text-first : il sait déjà transcrire un fichier audio via faster-whisper et produire un WAV avec Pocket TTS, mais la boucle micro/wake-word, le streaming et les automatismes Home Assistant ne sont **pas** encore intégrés.
 
-## Déploiement Docker Compose (LLM + API + STT + TTS)
+## Déploiement natif recommandé (sans Docker)
+
+Pour réduire les dépendances sur Raspberry Pi ou un PC Ubuntu, installer les binaires
+**llama.cpp**, **whisper.cpp**, **Pocket TTS Rust** et la passerelle Hestia :
+
+```bash
+cp native.env.example native.env
+./scripts/native/install.sh
+./scripts/native/run.sh
+```
+
+Documentation et profils automatiques (2g/4g/8g) : **[docs/native.md](docs/native.md)**.
+La cible **2 Go est expérimentale** et doit être confirmée par des mesures sur matériel.
+Le cœur Hestia reste provisoirement en Python + FastEmbed/ONNX ; les moteurs LLM, STT et
+TTS du mode natif n'ont pas de runtime Python. Les scripts d'outils peuvent utiliser
+Python, Bash ou des exécutables C/Rust via `exec.call` et JSON sur stdin/stdout.
+
+## Déploiement Docker Compose (optionnel pour les tests)
 
 La stack CPU pré-configurée utilise **llama.cpp** (Qwen3-0.6B GGUF), **FastEmbed/ONNX**
 (E5 multilingue), **faster-whisper** (`tiny` français) et **Pocket TTS** (`french`, voix `estelle`).

@@ -8,3 +8,7 @@ __pycache__/
 .env.*
 !*.env.example
 .cache/
+
+# Native model/process caches and secrets
+.native/
+native.env

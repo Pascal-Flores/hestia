@@ -134,6 +134,13 @@ class WorkflowEngine:
                     validate(result, tool.input_schema)
                 except ValidationError as exc:
                     raise WorkflowFailure(f"Paramètres invalides : {exc.message}") from exc
+            elif uses == "exec.call":
+                args = opts.get("arguments", latest)
+                if not isinstance(args, dict):
+                    raise WorkflowFailure(f"Arguments du step {sid} non structurés")
+                result = self._exec_call(tool, opts.get("command"), opts.get("args", []),
+                                         args, context, timeout=opts.get("timeout", 15),
+                                         env_names=opts.get("env", []))
             elif uses == "python.call":
                 args = opts.get("arguments", latest)
                 if not isinstance(args, dict):
@@ -206,6 +213,49 @@ class WorkflowEngine:
         if isinstance(value, list):
             return [WorkflowEngine._resolve(v, outputs) for v in value]
         return value
+
+    @staticmethod
+    def _exec_call(tool: Tool, command: str, argv: list[str], args: dict, context: dict,
+                   *, timeout: int, env_names: list[str]) -> Any:
+        """Run any trusted executable using JSON stdin/stdout without invoking a shell.
+
+        The plugin is trusted code, NOT sandboxed. Manifest permissions and
+        execution policies are enforced before this method is reached.
+        """
+        from .manifest import _valid_command
+        if not isinstance(command, str) or not _valid_command(command, tool.directory):
+            raise WorkflowFailure("Commande exec.call non autorisée")
+        if not isinstance(argv, list) or not all(isinstance(a, str) for a in argv):
+            raise WorkflowFailure("Arguments de commande invalides")
+        if not isinstance(env_names, list) or not all(
+                isinstance(name, str) and re.fullmatch(r"[A-Z_][A-Z0-9_]*", name)
+                for name in env_names):
+            raise WorkflowFailure("Variables d'environnement invalides")
+        if isinstance(timeout, bool) or not isinstance(timeout, int) or not 1 <= timeout <= 120:
+            raise WorkflowFailure("Timeout hors limites")
+        executable = (str((tool.directory / command).resolve())
+                      if "/" in command else command)
+        env = {"PATH": "/usr/local/bin:/usr/bin:/bin", "LANG": "C.UTF-8", "PYTHONIOENCODING": "utf-8"}
+        env.update({name: os.environ[name] for name in env_names if name in os.environ})
+        payload = json.dumps({"parameters": args, "context": context}, ensure_ascii=False)
+        if len(payload.encode("utf-8")) > 500_000:
+            raise WorkflowFailure("Entrée de l'outil trop volumineuse")
+        try:
+            proc = subprocess.run([executable, *argv], input=payload, text=True,
+                                  capture_output=True, timeout=timeout,
+                                  cwd=str(tool.directory), env=env, check=False)
+        except subprocess.TimeoutExpired as exc:
+            raise WorkflowFailure("Délai d'exécution du script dépassé") from exc
+        except OSError as exc:
+            raise WorkflowFailure(f"Impossible de lancer l'outil : {exc}") from exc
+        if proc.returncode != 0:
+            raise WorkflowFailure(f"Outil terminé avec le code {proc.returncode}: {proc.stderr[-500:]}")
+        if len(proc.stdout) > 500_000:
+            raise WorkflowFailure("Réponse de l'outil trop volumineuse")
+        try:
+            return json.loads(proc.stdout)
+        except json.JSONDecodeError as exc:
+            raise WorkflowFailure("exec.call attend un unique document JSON sur stdout") from exc
 
     @staticmethod
     def _python_call(tool: Tool, entrypoint: str, args: dict, context: dict,

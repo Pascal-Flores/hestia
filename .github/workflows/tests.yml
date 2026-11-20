@@ -24,3 +24,12 @@ jobs:
       - uses: actions/checkout@v4
       - run: cp .env.example .env
       - run: docker compose -f compose.yaml config --quiet
+
+  native-launcher:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash -n scripts/native/*.sh scripts/up.sh scripts/memory.sh
+      - run: ./scripts/native/run.sh --dry-run
+      - run: HESTIA_MEMORY_PROFILE=2g ./scripts/native/run.sh --dry-run
+      - run: HESTIA_MEMORY_PROFILE=8g ./scripts/native/run.sh --dry-run

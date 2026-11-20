@@ -42,25 +42,50 @@ class ChatRequest(TextRequest):
 class AudioBridge:
     """Calls the two persistent internal audio services over HTTP."""
 
-    def __init__(self, stt_url: str, tts_url: str, *, profile: str = "natural"):
+    def __init__(self, stt_url: str, tts_url: str, *, profile: str = "natural",
+                 stt_backend: str = "faster_whisper"):
         self.stt_url = stt_url
         self.tts_url = tts_url
+        if stt_backend not in {"faster_whisper", "whisper_cpp"}:
+            raise ValueError("Unknown STT backend")
+        self.stt_backend = stt_backend
         if profile not in {"natural", "mii"}:
             raise ValueError("Unknown voice profile")
         self.profile = profile
 
     def transcribe(self, audio: bytes, filename: str = "speech.wav") -> str:
         try:
-            response = httpx.post(
-                self.stt_url, files={"file": (Path(filename).name, audio, "application/octet-stream")},
-                timeout=180,
-            )
+            if self.stt_backend == "whisper_cpp":
+                # whisper.cpp requires 16 kHz mono PCM WAV, even if the input
+                # was originally MP3/OGG or a different WAV sample rate.
+                # ffmpeg is used only on the audio received with this request.
+                converted = subprocess.run(
+                    ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
+                     "-i", "pipe:0", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le",
+                     "-f", "wav", "pipe:1"],
+                    input=audio, capture_output=True, check=True, timeout=45,
+                ).stdout
+                if len(converted) > MAX_AUDIO_BYTES * 5:
+                    raise ValueError("Converted audio exceeds size limit")
+                response = httpx.post(
+                    self.stt_url,
+                    data={"response_format": "json", "language": "fr"},
+                    files={"file": ("speech.wav", converted, "audio/wav")},
+                    timeout=180,
+                )
+            else:
+                response = httpx.post(
+                    self.stt_url,
+                    files={"file": (Path(filename).name, audio, "application/octet-stream")},
+                    timeout=180,
+                )
             response.raise_for_status()
             text = response.json()["text"]
             if not isinstance(text, str):
                 raise ValueError("Invalid STT response")
             return text.strip()
-        except (httpx.HTTPError, ValueError, KeyError) as exc:
+        except (httpx.HTTPError, ValueError, KeyError, OSError,
+                subprocess.SubprocessError) as exc:
             raise RuntimeError(f"STT service unavailable: {exc}") from exc
 
     def synthesize(self, text: str) -> bytes:
@@ -132,6 +157,7 @@ def create_app(*, engine: WorkflowEngine | None = None,
             os.getenv("HESTIA_STT_URL", "http://stt:8001/v1/transcribe"),
             os.getenv("HESTIA_TTS_URL", "http://tts:8000/tts"),
             profile=os.getenv("HESTIA_VOICE_PROFILE", "natural"),
+            stt_backend=os.getenv("HESTIA_STT_BACKEND", "faster_whisper"),
         )
         yield
 

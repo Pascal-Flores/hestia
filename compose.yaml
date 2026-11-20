@@ -94,7 +94,7 @@ services:
   tts:
     build:
       context: .
-      dockerfile: docker/Dockerfile.tts
+      dockerfile: ${TTS_DOCKERFILE:-docker/Dockerfile.tts-rust}
     restart: unless-stopped
     command:
       - pocket-tts
@@ -110,10 +110,12 @@ services:
     environment:
       HF_HOME: /cache/hf
       OMP_NUM_THREADS: '2'
+      RAYON_NUM_THREADS: ${TTS_THREADS:-2}
+      TTS_QUANTIZE: ${TTS_QUANTIZE:-1}
     volumes:
       - tts_cache:/cache/hf
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=3)"]
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
       interval: 15s
       timeout: 5s
       retries: 10

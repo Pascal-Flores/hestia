@@ -1,4 +1,6 @@
-# Déployer Hestia avec Docker Compose
+# Déployer Hestia avec Docker Compose (optionnel)
+
+Pour un déploiement sans conteneurs et des moteurs STT/TTS natifs, voir [native.md](native.md).
 
 ## Services
 

@@ -13,7 +13,7 @@ from jsonschema import Draft202012Validator
 
 _ID = re.compile(r"^[a-z][a-z0-9_.-]{1,79}$")
 _STEP_ID = re.compile(r"^[a-z][a-z0-9_-]*$")
-SUPPORTED_STEPS = {"ai.extract", "python.call", "ai.respond", "tool.call", "core.template"}
+SUPPORTED_STEPS = {"ai.extract", "python.call", "exec.call", "ai.respond", "tool.call", "core.template"}
 
 
 class ManifestError(ValueError):
@@ -90,6 +90,18 @@ def load_tools(root: str | Path) -> dict[str, Tool]:
                 raise ManifestError(f"{tool_id}: unsupported step type {uses}")
             if not isinstance(step.get("with", {}), dict):
                 raise ManifestError(f"{tool_id}: step {sid}.with must be a mapping")
+            if uses == "exec.call":
+                options = step.get("with", {})
+                command = options.get("command")
+                argv = options.get("args", [])
+                if not isinstance(command, str) or not command.strip():
+                    raise ManifestError(f"{tool_id}: exec.call requires a command")
+                if not isinstance(argv, list) or not all(isinstance(a, str) for a in argv):
+                    raise ManifestError(f"{tool_id}: exec.call args must be strings")
+                if not _valid_command(command, path.parent):
+                    raise ManifestError(f"{tool_id}: exec.call command outside tool directory")
+                if not isinstance(options.get("timeout", 15), int) or not 1 <= options.get("timeout", 15) <= 120:
+                    raise ManifestError(f"{tool_id}: exec.call timeout must be between 1 and 120")
             if uses == "python.call":
                 entry = step.get("with", {}).get("entrypoint")
                 if not isinstance(entry, str) or not re.fullmatch(r"[A-Za-z_][\w-]*\.py:[A-Za-z_]\w*", entry):
@@ -113,3 +125,13 @@ def load_tools(root: str | Path) -> dict[str, Tool]:
             permissions=tuple(permissions), requires_confirmation=data.get("requires_confirmation", False),
         )
     return tools
+
+
+def _valid_command(command: str, directory: Path) -> bool:
+    """Allow PATH commands by basename or executables bundled in this tool's folder."""
+    if "\x00" in command or "\\" in command or command.startswith("/"):
+        return False
+    if "/" not in command:
+        return bool(re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9._+-]*", command))
+    path = (directory / command).resolve()
+    return path.is_relative_to(directory.resolve()) and path.is_file()

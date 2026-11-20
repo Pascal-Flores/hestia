@@ -1,0 +1,25 @@
+id: system.uptime
+name: Durée de fonctionnement de l'appareil
+description: Donne le nombre de secondes depuis le démarrage du serveur
+routing:
+  examples:
+    - Depuis combien de temps Hestia est allumée ?
+    - Ça fait combien de temps que le serveur tourne ?
+    - Quel est le temps de fonctionnement du système ?
+inputs:
+  type: object
+  additionalProperties: false
+  properties: {}
+steps:
+  - id: uptime
+    uses: exec.call
+    with:
+      command: sh
+      args: [main.sh]
+      arguments: {}
+      timeout: 5
+  - id: respond
+    uses: core.template
+    with:
+      data: ${{ steps.uptime.output }}
+      template: "Le système fonctionne depuis {{ seconds }} secondes."

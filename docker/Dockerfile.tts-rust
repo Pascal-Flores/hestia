@@ -1,0 +1,37 @@
+# Native Kyutai Pocket TTS: no Python or PyTorch in the runtime container.
+# Official v4.0.1 release ships binaries labelled 3.3.0.
+FROM debian:bookworm-slim AS fetch
+ARG TARGETARCH
+ARG POCKET_TTS_RELEASE=v4.0.1
+ARG POCKET_TTS_BINARY_VERSION=3.3.0
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates tar \
+    && rm -rf /var/lib/apt/lists/*
+RUN set -eu; \
+    case "$TARGETARCH" in \
+      amd64) arch=x86_64; digest=9abff0aa138a804e44052952d8c3bdaae247fb267ca8f4b83fe178897d1a0559;; \
+      arm64) arch=aarch64; digest=2b9a727bffd86ea6d73370d675cbd91a7db118f11b7f5a60343c2d5da12b187a;; \
+      *) echo "Unsupported architecture: $TARGETARCH" >&2; exit 1;; \
+    esac; \
+    archive="pocket-tts-${POCKET_TTS_BINARY_VERSION}-${arch}-unknown-linux-gnu.tar.gz"; \
+    curl --fail --location --retry 3 \
+      "https://github.com/kyutai-labs/pocket-tts/releases/download/${POCKET_TTS_RELEASE}/${archive}" \
+      -o /tmp/pocket-tts.tar.gz; \
+    echo "$digest  /tmp/pocket-tts.tar.gz" | sha256sum -c -; \
+    mkdir /tmp/unpacked /out; \
+    tar -xzf /tmp/pocket-tts.tar.gz -C /tmp/unpacked; \
+    binary="$(find /tmp/unpacked -type f -name pocket-tts | head -n 1)"; \
+    test -n "$binary"; cp "$binary" /out/pocket-tts; chmod +x /out/pocket-tts
+
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl libgcc-s1 libstdc++6 \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=fetch /out/pocket-tts /usr/local/bin/pocket-tts
+COPY docker/entrypoint-tts.sh /usr/local/bin/entrypoint-tts
+RUN chmod +x /usr/local/bin/entrypoint-tts \
+    && groupadd -g 10003 tts && useradd -u 10003 -g 10003 --create-home tts \
+    && mkdir -p /cache/hf && chown -R tts:tts /cache
+ENV HF_HOME=/cache/hf RAYON_NUM_THREADS=2
+USER tts
+EXPOSE 8000
+ENTRYPOINT ["/usr/local/bin/entrypoint-tts"]
+CMD ["serve", "--host", "0.0.0.0", "--port", "8000", "--language", "french"]
