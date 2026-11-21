@@ -1,0 +1,4 @@
+# Deprecated compatibility shim: Rust is already the default in compose.yaml.
+# Retained temporarily for installations with COMPOSE_FILE=compose.yaml:compose.rust.yaml.
+# Remove COMPOSE_FILE from .env and use plain docker compose commands.
+services: {}

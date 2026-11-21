@@ -1,199 +1,123 @@
-# Déployer Hestia avec Docker Compose (optionnel)
+# Docker Compose — Hestia avec cœur Rust
 
-Pour un déploiement sans conteneurs et des moteurs STT/TTS natifs, voir [native.md](native.md).
+La configuration principale est **`compose.yaml`**. Les services sont :
+`hestia` (Rust + interface web), `llm` (llama.cpp), `stt` (faster-whisper),
+`tts` (Pocket TTS Rust) et `listener` (microphone, RNNoise, wake word).
 
-## Services
-
-| Service | Port interne | Rôle |
-|---|---|---|
-| `hestia` | 8765 | API FastAPI, index d'embeddings ONNX, workflows YAML |
-| `llm` | 8080 | `llama.cpp:server` (Qwen3 0.6B GGUF quantifié 4 bits) |
-| `stt` | 8001 | faster-whisper, français, INT8 CPU, modèle `base` conservé en mémoire |
-| `tts` | 8000 | Pocket TTS officiel `serve`, français, modèle persistent |
-| `listener` (opt-in) | aucun | Micro ALSA, RNNoise, openWakeWord, capture, lecture TTS |
-
-Tous les services partagent un réseau Docker privé. **Seul Hestia est publié sur l'hôte**, à
-`127.0.0.1:8765` ; il ne faut pas exposer ce déploiement directement sur Internet.
-
-## Démarrage
-
-Prérequis : Docker Engine + plugin Compose V2 sur un Linux amd64 ou arm64, plusieurs Go libres
-sur le disque et une connexion Internet lors du premier démarrage.
+## Démarrer
 
 ```sh
-cp .env.example .env
-# Adapter les paramètres de .env si nécessaire
+cp .env.example .env  # uniquement si .env n'existe pas déjà
 docker compose up -d --build
-docker compose logs --follow hestia stt tts llm
+docker compose ps
 ```
 
-Les quatre modèles sont téléchargés **au premier démarrage**, puis mis en cache. Les modèles
-STT/TTS et embeddings peuvent démarrer plus lentement qu'Hestia. Le statut global se vérifie par :
+L'interface est disponible à **http://localhost:8765/**. `listener` est
+lancé **automatiquement** et utilise `/dev/snd` (Linux ALSA).
+Pour démarrer les moteurs sans microphone :
 
 ```sh
-curl -i http://127.0.0.1:8765/health/ready
+docker compose up -d --build --scale listener=0
 ```
 
-- `200` : API, LLM, STT et TTS répondent à leurs vérifications de santé.
-- `503` : un service n'est pas encore prêt, ou n'est pas accessible.
-
-## API
-
-Les routes sont accessibles sur `http://127.0.0.1:8765` ; `/docs` montre le schéma OpenAPI.
-
-### Routage seul
+Pour consulter les journaux :
 
 ```sh
-curl -s http://127.0.0.1:8765/v1/route \
-  -H 'Content-Type: application/json' \
-  -d '{"text":"Quelle heure est-il ?"}'
+docker compose logs -f hestia
+docker compose logs -f listener
+curl -fsS http://localhost:8765/health/live
+curl -fsS http://localhost:8765/health/ready
 ```
 
-### Requête texte → workflow
+`/health/live` teste l'API Rust ; `/health/ready` teste aussi LLM/STT/TTS.
+Le healthcheck du service Rust utilise **curl**, jamais `python`.
+
+## Migration depuis les anciennes commandes Docker
+
+La version précédente lançait Rust en surcouche :
 
 ```sh
-curl -s http://127.0.0.1:8765/v1/chat \
-  -H 'Content-Type: application/json' \
-  -d '{"text":"Combien font 12 plus 30 ?"}'
+docker compose -f compose.yaml -f compose.rust.yaml --profile listener up -d --build
 ```
 
-### Audio vers texte
+Désormais `compose.yaml` **inclut Rust et le listener**. Utiliser :
 
 ```sh
-curl -s http://127.0.0.1:8765/v1/audio/transcribe \
-  -F 'file=@question.wav'
+git pull
+docker compose up -d --build --force-recreate
+docker compose ps
 ```
 
-### Texte vers WAV (Pocket TTS)
+Si tu avais ajouté `COMPOSE_FILE=compose.yaml:compose.rust.yaml` dans
+ton `.env`, **supprime cette ligne** pour revenir à la configuration
+unique. Un `compose.rust.yaml` vide est conservé temporairement
+pour ne pas faire échouer les déploiements existants.
 
-```sh
-curl -s http://127.0.0.1:8765/v1/audio/speak \
-  -H 'Content-Type: application/json' \
-  -d '{"text":"Bonjour, je suis Hestia."}' \
-  --output reponse.wav
-```
+Les volumes de modèles `llm_cache`, `stt_cache` et `tts_cache`
+restent inchangés, de même que `hestia_data` qui contient les
+paramètres du tableau de bord, les clés API et le cache FastEmbed.
+L'ancien volume Python `embedding_cache` n'est plus utilisé.
+**Ne pas exécuter `docker compose down -v`**, car cela supprimerait
+aussi les modèles et les paramètres enregistrés.
 
-Le profil vocal `mii` est activable avec `HESTIA_VOICE_PROFILE=mii` dans `.env`
-(SoX traite la sortie du TTS). Il ne reproduit pas le moteur propriétaire de Nintendo.
+## Configurer les services
 
-### Prononciation des nombres dans Pocket TTS
+Les réglages de lancement se trouvent dans `.env` :
 
-Par défaut, la passerelle Hestia normalise les nombres **avant** d'appeler Pocket TTS :
-`42` devient `quarante-deux`, `14:30` devient `quatorze heures trente`,
-`20°C` devient `vingt degrés Celsius` et `3,5` devient
-`trois virgule cinq`. La normalisation couvre aussi les dates usuelles,
-les ordinaux, les pourcentages et les montants en euros. Seule la
-prononciation est modifiée : les valeurs numériques originales restent
-intactes dans les réponses HTTP et les paramètres d'outils.
+- `STT_MODEL=tiny|base|small|medium` pour la précision de Whisper
+  (par défaut `base`, modèle multilingue français en INT8 CPU).
+- `LISTENER_INPUT_DEVICE` et `LISTENER_OUTPUT_DEVICE` pour
+  sélectionner le matériel audio.
+- `HESTIA_API_KEY` pour protéger les API et le tableau de bord,
+  et `HESTIA_BIND_IP` pour un accès LAN explicite.
+- `HESTIA_TTS_NORMALIZE_NUMBERS=1` pour prononcer les nombres
+  français en toutes lettres avant Pocket TTS lors du premier lancement.
+  Le réglage peut ensuite être modifié depuis le tableau de bord.
 
-Le traitement est déterministe et ne nécessite aucun appel LLM. Il est
-activé par défaut dans `hestia`, aussi bien pour `/v1/audio/speak` que
-`/v1/audio/ask`. Pour le désactiver :
+Les réglages avancés du cœur et les clés API des plugins sont
+persistés dans `hestia_data`. Les valeurs déjà enregistrées dans ce
+volume prennent le pas sur les défauts de l'environnement.
 
-```dotenv
-HESTIA_TTS_NORMALIZE_NUMBERS=0
-```
-
-Puis `docker compose up -d --force-recreate hestia`.
-Les URL et adresses e-mail, qui sont des identifiants, ne sont pas
-converties en nombres.
-
-### Tour vocal complet
-
-```sh
-curl -s http://127.0.0.1:8765/v1/audio/ask -F 'file=@question.wav' > sortie.json
-python - <<'PY'
-import base64, json
-with open('sortie.json') as file:
-    result = json.load(file)
-print('Question:', result['transcript'])
-print('Réponse:', result['text'])
-with open('reponse.wav', 'wb') as file:
-    file.write(base64.b64decode(result['audio_base64']))
-PY
-```
-
-Le mode V1 utilise du JSON avec WAV encodé en base64 : **ce n'est pas du streaming** et il
-propose un écouteur microphone avec wake word via le profil `listener` (voir [listener.md](listener.md)). Les microcontrôleurs pourront
-appeler cette API depuis le réseau local après sécurisation.
-
-### Outils
-
-Les manifestes YAML et scripts sont dans `tools/` et montés en lecture seule dans le
-conteneur `hestia`. Après ajout d'un outil, reconstruire l'index :
-
-```sh
-curl -X POST http://127.0.0.1:8765/v1/tools/reload
-curl http://127.0.0.1:8765/v1/tools
-```
-
-## Qualité de transcription STT
-
-Pour les commandes vocales en français, le profil Docker standard utilise
-**Whisper Base** multilingue (74 millions de paramètres) au lieu de Tiny
-(39 millions). Le modèle est chargé une seule fois, en INT8 CPU, puis
-mis en cache dans le volume Docker. Les paramètres de routage et les
-prompts des outils ne changent pas.
-
-Pour sélectionner une autre taille, renseigner `STT_MODEL` dans `.env` :
-
-```dotenv
-STT_MODEL=base
-```
-
-Choisir `small` sur une machine disposant de plus de RAM si Base ne
-transcrit pas correctement ; `tiny` reste possible sur une machine
-très contrainte. Le script `./scripts/up.sh` conserve Tiny pour le
-profil mémoire expérimental `2g` et Base pour `4g` / `8g`.
-Une valeur explicite dans `.env` a priorité sur ces profils.
+Pour modifier seulement le STT sans reconstruire tous les services :
 
 ```sh
 docker compose up -d --no-deps --force-recreate stt
-docker compose --profile listener logs -f listener
 ```
 
-Pour comparer les résultats sur le même enregistrement, activer
-`LISTENER_DEBUG_AUDIO=1` et renvoyer `recordings/last-command.wav`
-à `/v1/audio/transcribe`. Une transcription médiocre peut également
-venir d'un enregistrement coupé ou d'un filtrage excessif, indépendamment
-de la taille du modèle.
+## Outils et requêtes
 
-## Configuration
+```sh
+# Routage sémantique sans exécuter de plugin
+curl -s http://localhost:8765/v1/route \
+  -H 'Content-Type: application/json' \
+  -d '{"text":"Quelle heure est-il ?"}'
 
-Les variables commentées dans `.env.example` permettent de choisir les modèles, la langue,
-les seuils de routage et l'interface d'écoute. Pour utiliser un grand LLM externe sur les
-requêtes sans outil, renseigner `HESTIA_FALLBACK_LLM_URL`, `HESTIA_FALLBACK_LLM_MODEL` et
-`HESTIA_FALLBACK_LLM_API_KEY`. Le LLM local continue de gérer l'extraction et la réponse des
-workflows. **Ne pas envoyer de données privées à un fournisseur externe sans l'avoir décidé.**
+# Réponse textuelle
+curl -s http://localhost:8765/v1/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"text":"Calcule 2 puissance 8"}'
 
-Par défaut, l'API ne demande pas de clé mais reste accessible **uniquement depuis l'hôte**.
-Pour une enceinte ESP32/terminal sur le LAN, définir :
+# Reconnaissance d'un fichier audio
+curl -s http://localhost:8765/v1/audio/transcribe \
+  -F 'file=@recordings/last-command.wav'
 
-```dotenv
-HESTIA_BIND_IP=0.0.0.0
-HESTIA_API_KEY=une-cle-longue-aleatoire
+# Texte vers Pocket TTS
+curl -s http://localhost:8765/v1/audio/speak \
+  -H 'Content-Type: application/json' \
+  -d '{"text":"Il est 14h30 et il fait 20 degrés."}' --output reponse.wav
 ```
 
-Les appels doivent alors comporter `-H 'X-Hestia-Key: une-cle-longue-aleatoire'`.
-Ajouter un pare-feu et éviter les redirections de ports depuis Internet.
-Les appels aux outils sensibles doivent demander confirmation côté application cliente ;
-le simple drapeau API `confirmed` ne constitue **pas** une protection de production.
+La réponse de `/v1/audio/ask` contient la transcription, la réponse
+textuelle et un WAV encodé en base64. Le listener réutilise cette route.
 
-Pour arrêter : `docker compose down`. Pour supprimer **aussi les modèles mis en cache** :
-`docker compose down -v` (à utiliser uniquement si la suppression est souhaitée).
+## Sécurité
 
-## Limites et sécurité
+Le dashboard est lié à `127.0.0.1:8765` par défaut et ne doit pas
+être exposé publiquement. Le fichier persistant
+`/data/hestia-settings.json` contient les clés API en clair,
+avec permissions 0600. Protéger les sauvegardes Docker.
 
-- **CPU et mémoire** : le Raspberry Pi 5 8 Go reste une cible expérimentale, Pocket TTS
-  français + STT + ONNX + LLM simultanés pouvant consommer beaucoup de RAM. Ne pas viser
-  l'UNO Q 4 Go sans alléger ou externaliser les services.
-- Les Dockerfiles installent les dépendances sur amd64/arm64, mais la disponibilité des roues
-  PyTorch/Pocket TTS/ctranslate2 ARM64 dépend des versions publiées. À valider physiquement.
-- Les tools Python sont du **code exécutable non fiable** : les sous-processus et leurs
-  restrictions ne sont pas une sandbox. Ne pas installer de plugins inconnus ; utiliser des
-  conteneurs ou restrictions supplémentaires pour les outils tiers.
-- Le routage E5 reste à calibrer sur des requêtes positives/négatives en français. Les seuils
-  par défaut ne sont **pas** des probabilités ni des niveaux de confiance éprouvés.
-- L'API est locale ; le wake word du service `listener` est facultatif. Pas encore d'audio streaming ni de suivi conversationnel
-  ou de réelle intégration Home Assistant.
-- En cas d'échec d'installation ARM, tester l'empilement sur x86_64 ou séparer le TTS du Pi.
+Les scripts `exec.call` sont exécutés avec les droits du conteneur,
+sans sandbox stricte. N'installer que des outils de confiance.
+La musique via MPD nécessite un service externe et une configuration
+explicite. Le scheduler n'envoie pas encore de notifications automatiques.

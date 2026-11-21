@@ -1,7 +1,8 @@
 # Écoute permanente, wake word et nettoyage audio (Docker Compose)
 
-Le service `listener` est **optionnel**. Il tourne sur l'ordinateur qui possède le micro
-et les haut-parleurs, et appelle le Hestia existant à travers le réseau Docker interne.
+Le service `listener` **démarre par défaut** avec Hestia sous Linux.
+Il tourne sur l'ordinateur qui possède le micro et les haut-parleurs et appelle
+l'API Hestia **Rust** à travers le réseau Docker interne.
 Il n'enregistre **pas** la conversation en continu sur disque et n'envoie de son au STT
 qu'après une activation vocale.
 
@@ -38,23 +39,50 @@ Windows/macOS et peut demander une configuration de routage audio sur PipeWire/P
 cp .env.example .env  # si ce n'est pas déjà fait
 ls -l /dev/snd
 # Construire et démarrer API + LLM + STT + TTS + écouteur :
-docker compose --profile listener up -d --build
+docker compose up -d --build
 # Suivre la détection / les erreurs ALSA :
-docker compose --profile listener logs -f listener
+docker compose logs -f listener
 ```
 
-Le service `listener` **n'est pas lancé** par le simple `docker compose up -d`.
-Le service Hestia et les modèles restent utilisables sans microphone ni périphérique audio.
+`listener` est lancé par un simple `docker compose up -d`.
+Pour exécuter uniquement le cœur et les modèles sur un serveur sans micro :
+
+```sh
+docker compose up -d --scale listener=0
+```
+
+Aucun profil Compose supplémentaire n'est nécessaire.
 
 ### Sélection du microphone / haut-parleur
 
+Dans la WebUI sur `http://localhost:8765/`, ouvrir **Paramètres**,
+puis **Périphériques audio**. Les listes sont lues directement depuis
+PortAudio **dans le conteneur listener**. Choisir un microphone et une
+sortie (ou « Automatique ») puis cliquer sur **Appliquer la sélection**.
+
+Hestia valide les entrées à 48 kHz mono et une fréquence de sortie compatible,
+sauvegarde le choix dans `recordings/device-settings.json`, puis referme et
+rouvre la capture en cours. Les réglages restent actifs après une recréation
+Docker ; aucun redémarrage manuel n'est nécessaire. Les anciens
+`LISTENER_INPUT_DEVICE` / `LISTENER_OUTPUT_DEVICE` du fichier `.env`
+restent les valeurs initiales **tant qu'aucun choix WebUI n'a été enregistré**.
+Pour restaurer le pilotage via `.env`, arrêter le listener et supprimer
+uniquement `recordings/device-settings.json`.
+
+Si la WebUI indique « Listener inaccessible », vérifier
+`docker compose ps listener` et `docker compose logs listener`.
+Le contrôle audio écoute sur le port **8766 à l'intérieur du réseau Docker**,
+jamais sur l'hôte ; seul le port 8765 de Hestia reste exposé.
+
+#### Diagnostic en ligne de commande
+
 ```sh
-docker compose --profile listener run --rm --no-deps listener \
+docker compose run --rm --no-deps listener \
   python -m listener.app --list-devices
 ```
 
 Renseigner `LISTENER_INPUT_DEVICE` et `LISTENER_OUTPUT_DEVICE` (indice ou sous-chaîne du nom
-PortAudio), puis `docker compose --profile listener up -d`. Si `/dev/snd` appartient
+PortAudio), puis `docker compose up -d`. Si `/dev/snd` appartient
 au groupe `audio`, vérifier son GID via `stat -c %g /dev/snd/controlC0` et régler
 `LISTENER_AUDIO_GID` en conséquence (défaut 29 sur Ubuntu). Pour les WAV de
 diagnostic dans `./recordings`, régler `LISTENER_UID` et `LISTENER_GID` si votre compte
@@ -85,10 +113,10 @@ transcription incomplète. Pour identifier le goulot :
 
 ```sh
 docker compose stats listener
-docker compose --profile listener logs -f listener
+docker compose logs -f listener
 # Test temporaire sans RNNoise : changer LISTENER_FILTER=none dans .env,
 # puis redémarrer l'écouteur.
-docker compose --profile listener up -d --force-recreate listener
+docker compose up -d --force-recreate listener
 ```
 
 Si la capture déborde encore, réduire la pression CPU des autres conteneurs,
@@ -123,11 +151,11 @@ LLM → TTS → haut-parleur :
 
 ```sh
 docker compose stop listener
-docker compose --profile listener run --rm --no-deps listener \\
+docker compose run --rm --no-deps listener \\
   python -m listener.app --test-once 6
 aplay recordings/enhanced.wav
 aplay recordings/once-response.wav
-docker compose --profile listener up -d listener
+docker compose up -d listener
 ```
 
 Parler pendant ces six secondes. Les fichiers `raw.wav`, `enhanced.wav`
@@ -169,8 +197,8 @@ commande. Écouter `recordings/last-command.wav` et
 `recordings/last-response.wav` sur le PC hôte. Ces deux fichiers sont
 réécrits au prochain échange, et rien n'est conservé par défaut.
 Si la commande est claire mais la transcription reste mauvaise, comparer
-`LISTENER_FILTER=none`, puis essayer `STT_MODEL=base` (nécessite
-un redémarrage du service `stt`, et davantage de RAM).
+`LISTENER_FILTER=none`, puis essayer `STT_MODEL=small` (plus lourd que le
+modèle `base` utilisé par défaut ; redémarrage du service `stt` requis).
 
 ### Wake word de test, puis « Hestia »
 
@@ -188,7 +216,7 @@ sous `models/wakeword/hestia.onnx`. Dans `.env` :
 LISTENER_WAKE_MODEL=/models/wakeword/hestia.onnx
 ```
 
-Recréer le service : `docker compose --profile listener up -d`.
+Recréer le service : `docker compose up -d`.
 Le modèle **n'est pas livré** avec cette V1. Les modèles préentraînés distribués par
 openWakeWord ne sont pas automatiquement utilisables commercialement ; lire leurs licences.
 
@@ -198,13 +226,13 @@ Arrêter temporairement l'écouteur qui monopolise le micro :
 
 ```sh
 docker compose stop listener
-docker compose --profile listener run --rm --no-deps listener \
+docker compose run --rm --no-deps listener \
   python -m listener.app --record-sample 8
 # Puis comparer :
 aplay recordings/raw.wav
 aplay recordings/enhanced.wav
 # Relancer :
-docker compose --profile listener up -d
+docker compose up -d
 ```
 
 Le fichier brut est à **48 kHz**, l'amélioré à **16 kHz**, comme les données envoyées au

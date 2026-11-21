@@ -1,0 +1,34 @@
+id: math.calculate
+name: Calculatrice scientifique
+description: Calcule une expression mathématique avec parenthèses, puissances et fonctions.
+routing:
+  examples:
+    - Calcule 13 fois 8 moins 5
+    - Combien vaut la racine carrée de 144 ?
+    - Combien font deux puissance huit ?
+    - Calcule sin(pi divisé par deux)
+    - Évalue l'expression 2*(3+4)^2
+inputs:
+  type: object
+  additionalProperties: false
+  properties:
+    expression: {type: string, description: Expression mathématique utilisant + - * / ^, parenthèses, sqrt, sin, cos, tan, log, pi}
+  required: [expression]
+schedule_allowed: true
+steps:
+  - id: extract
+    uses: ai.extract
+    with:
+      prompt: Convertis l'énoncé en expression mathématique standard. Ne calcule pas le résultat.
+  - id: execute
+    uses: exec.call
+    with:
+      command: python3
+      argv: [main.py]
+      arguments: ${{ steps.extract.output }}
+      timeout: 5
+  - id: respond
+    uses: ai.respond
+    with:
+      data: ${{ steps.execute.output }}
+      prompt: Communique le résultat exact calculé par le script, sans en inventer un autre.

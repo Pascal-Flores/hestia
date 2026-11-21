@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hestia · Administration</title>
+<style>
+:root{color-scheme:dark;--bg:#10141b;--panel:#1a222e;--panel2:#202c3c;--line:#344355;--text:#eff5fb;--muted:#a6bacb;--accent:#73c6d9}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.52 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding:17px max(22px,calc((100vw - 1080px)/2));background:#151d28;border-bottom:1px solid var(--line)}
+.brand{font-weight:750;font-size:23px;letter-spacing:.5px}.brand span{color:var(--accent)}
+main{max-width:1110px;margin:auto;padding:24px}
+nav{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:24px}
+nav button{background:transparent;border:1px solid var(--line);color:var(--muted)}
+nav button.active{background:var(--panel2);color:var(--accent);border-color:var(--accent)}
+button{border:1px solid transparent;cursor:pointer;background:var(--accent);color:#10222a;border-radius:9px;padding:9px 14px;font:inherit;font-weight:650}
+button.ghost{background:var(--panel2);color:var(--text);border:1px solid var(--line)}
+button.danger{background:#65313c;color:#fff}button:disabled{opacity:.5;cursor:not-allowed}
+input,select,textarea{background:#101a26;border:1px solid #465667;color:#eff5fb;padding:9px 11px;border-radius:8px;font:inherit;width:100%}
+input[type=checkbox]{width:auto;accent-color:#73c6d9}
+label{display:block;color:var(--muted);font-size:13px;margin:0 0 5px}
+label strong{color:var(--text)}
+textarea{min-height:94px;resize:vertical}
+.row{display:flex;gap:10px;align-items:center}.row.wrap{flex-wrap:wrap}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(275px,1fr));gap:15px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:19px;margin-bottom:15px}
+.card h3{margin:0 0 5px;font-size:18px}.card p{margin:2px 0 12px;color:var(--muted)}
+.field{margin-bottom:13px}
+.small{font-size:12px;color:var(--muted)}.pill{padding:2px 8px;border:1px solid var(--line);border-radius:20px;font-size:12px;color:var(--muted)}
+section[hidden]{display:none}h1{font-size:25px;letter-spacing:-.5px;margin:0 0 16px}
+pre{white-space:pre-wrap;word-wrap:break-word;background:#0e1720;padding:14px;border-radius:9px;border:1px solid var(--line)}
+#toast{position:fixed;bottom:18px;right:18px;max-width:380px;background:#16434b;border:1px solid var(--accent);border-radius:10px;padding:13px 17px;display:none;box-shadow:0 8px 32px #0007}
+#toast.err{background:#5b2e32;border-color:#e68990}
+a{color:var(--accent)}.tablewrap{overflow:auto}
+table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid var(--line);padding:10px;text-align:left}
+@media(max-width:640px){header{padding:14px 16px}main{padding:16px}.row.mobile{flex-wrap:wrap}}
+</style></head><body>
+<header>
+ <div class="brand">Hestia <span>Studio</span> <span class="pill">Rust Core</span></div>
+ <div class="row" style="max-width:400px;flex:1">
+  <label for="apiKey" style="margin:0;white-space:nowrap">Clé d'accès</label>
+  <input id="apiKey" type="password" autocomplete="off" placeholder="Optionnelle en local">
+  <button id="connect" class="ghost">Connecter</button>
+ </div>
+</header>
+<main>
+ <nav>
+  <button class="active" data-tab="home">Vue d'ensemble</button>
+  <button data-tab="plugins">Plugins</button>
+  <button data-tab="schedules">Récurrences</button>
+  <button data-tab="settings">Paramètres</button>
+ </nav>
+ <section id="home">
+  <h1>Assistant local</h1>
+  <div class="grid">
+   <div class="card">
+    <h3>Tester une demande</h3><p>Teste le routage sémantique et les workflows sans microphone.</p>
+    <div class="field"><label>Texte</label><input id="testText" value="Quelle heure est-il ?"></div>
+    <div class="row"><button id="routeBtn" class="ghost">Routage</button><button id="askBtn">Exécuter</button></div>
+    <pre id="testOutput" aria-live="polite">Prêt</pre>
+   </div>
+   <div class="card">
+    <h3>État des services</h3><p>Vérification du LLM, du STT et de Pocket TTS.</p>
+    <pre id="health">Connexion…</pre><button id="refresh" class="ghost">Actualiser</button>
+   </div>
+  </div>
+  <div class="card"><h3>Exécutions récentes</h3><div id="history">Aucune exécution</div></div>
+ </section>
+ <section id="plugins" hidden>
+  <h1>Catalogue de plugins</h1>
+  <p class="small">Les clés API sont conservées dans un fichier local avec des droits restrictifs et ne sont jamais relues en clair par l'interface. N'installe que des scripts de confiance.</p>
+  <div id="pluginList" class="grid"></div>
+ </section>
+ <section id="schedules" hidden>
+  <h1>Outils récurrents</h1>
+  <div class="card">
+   <h3>Créer ou modifier une tâche</h3>
+   <div class="grid">
+    <div class="field"><label>Identifiant unique</label><input id="jobId" placeholder="meteo_matinale"></div>
+    <div class="field"><label>Outil autorisé</label><select id="jobTool"></select></div>
+    <div class="field"><label>Expression cron (5 champs)</label><input id="jobCron" value="0 7 * * *"></div>
+    <div class="field"><label>Fuseau horaire</label><select id="jobTz"><option value="Europe/Paris">Europe/Paris</option><option value="UTC">UTC</option></select></div>
+    <div class="field"><label>Paramètres JSON de l'outil</label><textarea id="jobArgs">{}</textarea></div>
+   </div>
+   <div class="row"><label><input type="checkbox" id="jobEnabled" checked> Activée</label><button id="saveJob">Enregistrer</button></div>
+   <p class="small">Exemple : <code>0 7 * * *</code> = tous les jours à 07:00 dans le fuseau sélectionné. Aucun outil demandant confirmation ne peut être lancé automatiquement.</p>
+  </div>
+  <div id="scheduleList"></div>
+ </section>
+ <section id="settings" hidden>
+  <h1>Paramètres Hestia</h1>
+  <div class="card"><form id="settingsForm">
+   <div class="grid">
+    <div class="field"><label>URL LLM (OpenAI compatible)</label><input name="llm_url"></div>
+    <div class="field"><label>Modèle LLM</label><input name="llm_model"></div>
+    <div class="field"><label>URL grand LLM de secours (optionnel)</label><input name="fallback_llm_url" placeholder="https://.../v1/chat/completions"></div>
+    <div class="field"><label>Modèle de secours</label><input name="fallback_llm_model"></div>
+    <div class="field"><label>URL STT</label><input name="stt_url"></div>
+    <div class="field"><label>URL Pocket TTS</label><input name="tts_url"></div>
+    <div class="field"><label>Seuil de routage</label><input name="route_min_score" type="number" min="0" max="1" step=".005"></div>
+    <div class="field"><label>Écart minimal entre outils</label><input name="route_min_margin" type="number" min="0" max="1" step=".005"></div>
+    <div class="field"><label>Profil vocal</label><select name="voice_profile"><option value="natural">Naturel</option><option value="mii">Stylisé Mii</option></select></div>
+    <div class="field"><label><input name="normalize_numbers" type="checkbox"> Lire les nombres en toutes lettres</label></div>
+   </div>
+   <button type="submit">Sauvegarder</button></form>
+   <hr style="border:0;border-top:1px solid var(--line);margin:18px 0">
+   <h3>Clés des modèles</h3>
+   <p class="small">Une valeur vide laisse la clé existante inchangée. Les clés ne sont jamais renvoyées en clair.</p>
+   <div class="grid">
+    <div class="field"><label>Clé API LLM principal</label><input id="llmKey" type="password" autocomplete="off" placeholder="Vide = inchangé"></div>
+    <div class="field"><label>Clé API LLM de secours</label><input id="fallbackKey" type="password" autocomplete="off" placeholder="Vide = inchangé"></div>
+   </div><button id="saveKeys">Enregistrer les clés</button>
+   <p id="keyStatus" class="small"></p>
+   <p class="small">Les paramètres du cœur Rust sont appliqués à chaud. Les modèles Whisper et Pocket TTS restent configurés au démarrage des conteneurs.</p>
+  </div>
+  <div class="card">
+   <h3>Périphériques audio</h3>
+   <p>Choisis le microphone et les haut-parleurs détectés par le listener dans Docker. Un changement rouvre la capture audio sans redémarrer les conteneurs.</p>
+   <div class="grid">
+    <div class="field"><label for="audioInput">Microphone</label><select id="audioInput" disabled><option>Chargement…</option></select></div>
+    <div class="field"><label for="audioOutput">Haut-parleurs</label><select id="audioOutput" disabled><option>Chargement…</option></select></div>
+   </div>
+   <div class="row wrap">
+    <button id="saveAudio" disabled>Appliquer la sélection</button>
+    <button id="refreshAudio" class="ghost">Actualiser les périphériques</button>
+   </div>
+   <p id="audioStatus" class="small" role="status">Lecture des périphériques du listener…</p>
+  </div>
+ </section>
+</main><div id="toast" role="status"></div>
+<script>
+(function(){
+'use strict';
+var key='',currentPlugins=[],currentJobs=[],settings={};
+var $=function(id){return document.getElementById(id)};
+function escape(s){return String(s==null?'':s).replace(/[&<>"']/g,function(ch){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]})}
+function toast(s,error){var node=$('toast');node.textContent=s;node.className=error?'err':'';node.style.display='block';setTimeout(function(){node.style.display='none'},4500)}
+async function api(url,method,body){
+ var opts={method:method||'GET',headers:{}};
+ if(key)opts.headers['X-Hestia-Key']=key;
+ if(body!==undefined){opts.headers['Content-Type']='application/json';opts.body=JSON.stringify(body)}
+ var res=await fetch(url,opts);var data=await res.json().catch(function(){return {}});
+ if(!res.ok)throw new Error(data.error||data.detail||('HTTP '+res.status));
+ return data;
+}
+document.querySelectorAll('nav button').forEach(function(b){
+ b.onclick=function(){
+  document.querySelectorAll('nav button').forEach(function(n){n.classList.toggle('active',n===b)});
+  document.querySelectorAll('main section').forEach(function(s){s.hidden=s.id!==b.dataset.tab});
+ };
+});
+$('connect').onclick=function(){key=$('apiKey').value;refreshAll()};
+$('routeBtn').onclick=async function(){try{$('testOutput').textContent=JSON.stringify(await api('/v1/route','POST',{text:$('testText').value}),null,2)}catch(e){toast(e.message,true)}};
+$('askBtn').onclick=async function(){try{$('testOutput').textContent=JSON.stringify(await api('/v1/chat','POST',{text:$('testText').value}),null,2);loadHistory()}catch(e){toast(e.message,true)}};
+$('refresh').onclick=refreshAll;
+async function loadHealth(){try{$('health').textContent=JSON.stringify(await api('/health/ready'),null,2)}catch(e){$('health').textContent=e.message}}
+async function loadHistory(){try{
+ var rows=await api('/api/admin/history');
+ $('history').innerHTML='<div class="tablewrap"><table><thead><tr><th>Heure</th><th>Source</th><th>Outil</th><th>État</th></tr></thead><tbody>'+
+ rows.slice(-20).reverse().map(function(r){return '<tr title="'+escape(r.text)+'"><td>'+escape(r.at)+'</td><td>'+escape(r.source)+'</td><td>'+escape(r.tool_id)+'</td><td>'+escape(r.status)+'</td></tr>'}).join('')+'</tbody></table></div>';
+}catch(e){$('history').textContent=e.message}}
+async function loadPlugins(){
+ currentPlugins=await api('/api/admin/plugins');
+ $('pluginList').innerHTML=currentPlugins.map(function(p){
+ var fields=p.config.map(function(c){
+  var id='plugin_'+p.id.replace(/[^a-z0-9]/gi,'_')+'_'+c.key;
+  return '<div class="field"><label for="'+escape(id)+'">'+escape(c.label||c.key)+(c.required?' *':'')+'</label>'+
+    '<input id="'+escape(id)+'" data-setting="'+escape(c.key)+'" type="'+(c.secret?'password':'text')+'" placeholder="'+(c.secret?(c.configured?'Configuré · vide = inchangé':'Saisir une clé'):'Valeur')+'" value="'+(c.secret?'':escape(c.value))+'">'+
+    (c.description?'<div class="small">'+escape(c.description)+'</div>':'')+'</div>';
+ }).join('');
+ return '<div class="card" data-plugin="'+escape(p.id)+'"><div class="row wrap"><h3 style="flex:1">'+escape(p.name)+'</h3><span class="pill">'+escape(p.id)+'</span></div>'+
+  '<p>'+escape(p.description)+'</p><div class="field"><label><input type="checkbox" data-enable '+(p.enabled?'checked':'')+'> Activé pour le routage</label></div>'+fields+
+  '<div class="row wrap"><button data-save>Enregistrer</button><button data-test class="ghost">Tester les paramètres</button></div>'+
+  '<div class="small">Exemples : '+p.examples.map(escape).slice(0,3).join(' · ')+'</div></div>';
+ }).join('');
+ $('pluginList').querySelectorAll('[data-plugin]').forEach(function(card){
+  var id=card.dataset.plugin;
+  card.querySelector('[data-save]').onclick=async function(){
+   var values={};
+   card.querySelectorAll('[data-setting]').forEach(function(input){values[input.dataset.setting]=input.value});
+   try{await api('/api/admin/plugins/'+encodeURIComponent(id),'POST',
+    {enabled:card.querySelector('[data-enable]').checked,values:values});
+    toast('Plugin enregistré');loadPlugins();loadJobTools();
+   }catch(e){toast(e.message,true)}
+  };
+  card.querySelector('[data-test]').onclick=function(){
+   document.querySelector('[data-tab=home]').click();
+   var p=currentPlugins.find(function(t){return t.id===id});
+   $('testText').value=p.examples[0]||'';
+  };
+ });
+}
+async function loadJobTools(){
+ try{var p=await api('/api/admin/plugins');
+  $('jobTool').innerHTML=p.filter(function(x){return x.enabled&&x.schedule_allowed})
+   .map(function(x){return '<option value="'+escape(x.id)+'">'+escape(x.name)+'</option>'}).join('');
+ }catch(e){toast(e.message,true)}
+}
+async function loadJobs(){
+ currentJobs=await api('/api/admin/schedules');
+ $('scheduleList').innerHTML=currentJobs.length?currentJobs.map(function(j){
+  return '<div class="card" data-job="'+escape(j.id)+'"><div class="row wrap"><h3 style="flex:1">'+escape(j.id)+'</h3>'+
+   '<span class="pill">'+escape(j.enabled?'Activée':'Pause')+'</span></div><p>'+escape(j.tool_id)+' · '+escape(j.cron)+' · '+escape(j.timezone)+
+   '</p><p class="small">Dernière exécution : '+escape(j.last_run||'jamais')+' · '+escape(j.last_status||'aucun résultat')+'</p>'+
+   '<button class="ghost" data-edit>Modifier</button> <button class="danger" data-delete>Supprimer</button></div>';
+ }).join(''):'<div class="card"><p>Aucune tâche récurrente.</p></div>';
+ $('scheduleList').querySelectorAll('[data-job]').forEach(function(card){
+  var id=card.dataset.job;
+  card.querySelector('[data-delete]').onclick=async function(){
+   if(!confirm('Supprimer cette récurrence ?'))return;
+   try{await api('/api/admin/schedules/'+encodeURIComponent(id),'DELETE');loadJobs()}catch(e){toast(e.message,true)}
+  };
+  card.querySelector('[data-edit]').onclick=function(){
+   var j=currentJobs.find(function(x){return x.id===id});
+   $('jobId').value=j.id;$('jobTool').value=j.tool_id;
+   $('jobCron').value=j.cron;$('jobTz').value=j.timezone;
+   $('jobArgs').value=JSON.stringify(j.args,null,2);
+   $('jobEnabled').checked=j.enabled;window.scrollTo({top:0,behavior:'smooth'});
+  };
+ });
+}
+$('saveJob').onclick=async function(){
+ try{
+  var job={id:$('jobId').value.trim(),tool_id:$('jobTool').value,
+   cron:$('jobCron').value,timezone:$('jobTz').value,
+   args:JSON.parse($('jobArgs').value),enabled:$('jobEnabled').checked};
+  await api('/api/admin/schedules','POST',job);toast('Récurrence enregistrée');loadJobs();
+ }catch(e){toast(e.message,true)}
+};
+async function loadSettings(){
+ settings=await api('/api/admin/settings');
+ var form=$('settingsForm');
+ Object.keys(settings).forEach(function(k){
+  var el=form.elements.namedItem(k);
+  if(el){if(el.type==='checkbox')el.checked=settings[k];else el.value=settings[k]}
+ });
+}
+function describeAudioDevice(data, id, kind){
+ if(id===null||id===undefined)return 'automatique';
+ var found=(data.devices||[]).find(function(d){return d.id===id});
+ return found?found.name:'périphérique '+id+' introuvable';
+}
+function fillAudioSelect(id,data,kind){
+ var select=$(id),current=data[kind+'_device'];
+ var def=data['default_'+kind];
+ var defInfo=(data.devices||[]).find(function(d){return d.id===def});
+ var auto='Automatique'+(defInfo?' ('+defInfo.name+')':'');
+ var options='<option value="">'+escape(auto)+'</option>';
+ (data.devices||[]).filter(function(d){return d['max_'+kind+'_channels']>0}).forEach(function(d){
+  options+='<option value="'+d.id+'">'+escape(d.name)+' — n° '+d.id+
+   ' ('+d['max_'+kind+'_channels']+' canaux)'+(d['default_'+kind]?' · défaut':'')+'</option>';
+ });
+ select.innerHTML=options;
+ if(typeof current==='number'&&!Array.from(select.options).some(function(o){return o.value===String(current)})){
+  select.add(new Option('Introuvable — n° '+current,String(current)));
+ }
+ select.value=typeof current==='number'?String(current):'';
+ select.disabled=false;
+}
+async function loadAudioDevices(){
+ $('audioStatus').textContent='Interrogation du listener…';
+ $('audioInput').disabled=true;$('audioOutput').disabled=true;$('saveAudio').disabled=true;
+ try{
+  var data=await api('/api/admin/audio/devices');
+  fillAudioSelect('audioInput',data,'input');
+  fillAudioSelect('audioOutput',data,'output');
+  $('saveAudio').disabled=false;
+  $('audioStatus').textContent='Actuel : micro = '+describeAudioDevice(data,data.input_device,'input')+
+   ' ; haut-parleurs = '+describeAudioDevice(data,data.output_device,'output')+
+   '. Les périphériques sont ceux vus depuis Docker, pas ceux du navigateur.';
+ }catch(e){
+  $('audioInput').innerHTML='<option>Listener indisponible</option>';
+  $('audioOutput').innerHTML='<option>Listener indisponible</option>';
+  $('audioStatus').textContent='Impossible de consulter les périphériques : '+e.message;
+ }
+}
+$('refreshAudio').onclick=loadAudioDevices;
+$('saveAudio').onclick=async function(){
+ var input=$('audioInput').value,output=$('audioOutput').value;
+ try{
+  $('saveAudio').disabled=true;
+  await api('/api/admin/audio/devices','PUT',{
+    input_device:input===''?null:Number(input),
+    output_device:output===''?null:Number(output)
+  });
+  toast('Périphériques enregistrés ; réouverture de l’écoute…');
+  await loadAudioDevices();
+ }catch(e){toast(e.message,true);$('audioStatus').textContent=e.message;$('saveAudio').disabled=false;}
+};
+async function loadKeys(){
+ try{var status=await api('/api/admin/llm-keys');
+ $('keyStatus').textContent='Clé principale : '+(status.llm_api_key?'configurée':'non configurée')+
+   ' · Clé secours : '+(status.fallback_api_key?'configurée':'non configurée');
+ }catch(e){$('keyStatus').textContent=e.message}
+}
+$('saveKeys').onclick=async function(){
+ var llm=$('llmKey').value,backup=$('fallbackKey').value;
+ try{await api('/api/admin/llm-keys','PUT',{llm_api_key:llm||null,fallback_api_key:backup||null});
+  $('llmKey').value='';$('fallbackKey').value='';await loadKeys();toast('Clés enregistrées');
+ }catch(e){toast(e.message,true)}
+};
+$('settingsForm').onsubmit=async function(event){
+ event.preventDefault();var form=event.target;var payload={};
+ Object.keys(settings).forEach(function(k){var el=form.elements.namedItem(k);
+  if(!el)return;
+  payload[k]=el.type==='checkbox'?el.checked:el.type==='number'?Number(el.value):el.value;
+ });
+ try{await api('/api/admin/settings','PUT',payload);toast('Paramètres appliqués');loadSettings()}
+ catch(e){toast(e.message,true)}
+};
+async function refreshAll(){
+ await Promise.allSettled([loadHealth(),loadHistory(),loadPlugins(),loadSettings(),loadKeys(),loadJobs(),loadJobTools(),loadAudioDevices()]);
+}
+refreshAll();
+})();
+</script></body></html>

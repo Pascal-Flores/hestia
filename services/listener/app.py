@@ -90,11 +90,14 @@ class ProcessingMetrics:
         self.reset()
 
 
-def run(record_sample: float = 0, test_once: float = 0):
+def run(record_sample: float = 0, test_once: float = 0, *, control=None):
     import sounddevice as sd
 
     input_device = _device(os.getenv("LISTENER_INPUT_DEVICE", ""))
     output_device = _device(os.getenv("LISTENER_OUTPUT_DEVICE", ""))
+    if control is not None:
+        input_device, output_device = control.current()
+    LOG.info("Opening audio devices: microphone=%r, speaker=%r", input_device, output_device)
     output_rate = int(os.getenv("LISTENER_OUTPUT_RATE", "0")) or None
     debug_audio = os.getenv("LISTENER_DEBUG_AUDIO", "0").strip().lower() in ("1", "true", "yes", "on")
     mode = os.getenv("LISTENER_FILTER", "rnnoise")
@@ -181,6 +184,9 @@ def run(record_sample: float = 0, test_once: float = 0):
         LOG.info("Listening for wake word. Stop with Ctrl+C.")
         try:
             while True:
+                if control is not None and control.changed.is_set():
+                    LOG.info("Audio devices changed; reopening microphone and speaker")
+                    return
                 block = microphone.read()
                 started = time.perf_counter()
                 # Missing blocks invalidate streaming inference and utterances;
@@ -288,8 +294,35 @@ def main(argv=None):
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     if args.list_devices:
         list_devices()
-    else:
+    elif args.record_sample or args.test_once:
         run(record_sample=args.record_sample, test_once=args.test_once)
+    else:
+        from .control import DeviceControl, start_server
+
+        controller = DeviceControl(
+            os.getenv("LISTENER_SETTINGS_PATH", "/recordings/device-settings.json")
+        )
+        server = start_server(
+            controller, port=int(os.getenv("LISTENER_CONTROL_PORT", "8766")),
+            api_key=os.getenv("HESTIA_API_KEY", ""),
+        )
+        try:
+            while True:
+                try:
+                    run(control=controller)
+                except Exception:
+                    # Keep the internal device API available even if the
+                    # selected microphone disappears or cannot be opened.
+                    # The WebUI can then pick another device without
+                    # restarting the container. Retry after 10 seconds.
+                    LOG.exception(
+                        "Listener audio failed; choose a working input in the WebUI. "
+                        "Retrying after 10 seconds or a settings change"
+                    )
+                    controller.changed.wait(timeout=10)
+        finally:
+            server.shutdown()
+            server.server_close()
 
 
 if __name__ == "__main__":

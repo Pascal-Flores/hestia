@@ -12,9 +12,10 @@ inputs:
   properties: {}
 steps:
   - id: execute
-    uses: python.call
+    uses: exec.call
     with:
-      entrypoint: main.py:run
+      command: python3
+      argv: [main.py]
       arguments: {}
       timeout: 5
   - id: respond
