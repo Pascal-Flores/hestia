@@ -140,7 +140,7 @@ def test_control_http_endpoints_require_key_and_change_selection(tmp_path):
         status, reread = call("GET")
         assert status == 200 and reread["output_device"] == 1
         with pytest.raises(HTTPError) as invalid:
-            call("PUT", {"input_device": 2, "output_device": 0})
+            call("PUT", {"input_device": 2, "output_device": 2})
         assert invalid.value.code == 400
     finally:
         server.shutdown()
