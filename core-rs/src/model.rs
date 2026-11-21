@@ -104,7 +104,7 @@ impl Default for Settings {
                 .and_then(|x| x.parse().ok()).unwrap_or(0.035),
             voice_profile: std::env::var("HESTIA_VOICE_PROFILE")
                 .unwrap_or_else(|_| "natural".into()),
-            normalize_numbers: true,
+            normalize_numbers: !matches!(std::env::var("HESTIA_TTS_NORMALIZE_NUMBERS").unwrap_or_else(|_| "1".into()).as_str(), "0" | "false" | "no" | "off"),
         }
     }
 }

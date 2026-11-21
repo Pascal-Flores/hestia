@@ -37,3 +37,22 @@ def test_plugins_have_manifest_and_execution_steps():
                 args = step["with"].get("argv", step["with"].get("args", []))
                 assert command in {"python3", "bash", "sh"}
                 assert (path.parent / args[0]).is_file()
+
+
+def test_time_tool_uses_exec_call_and_returns_json():
+    manifest = yaml.safe_load((ROOT / "system" / "time" / "tool.yaml").read_text())
+    step = manifest["steps"][0]
+    assert step["uses"] == "exec.call"
+    assert step["with"]["command"] == "python3"
+    assert step["with"]["argv"] == ["main.py"]
+    script = ROOT / "system" / "time" / "main.py"
+    process = subprocess.run(
+        [sys.executable, str(script)],
+        input=json.dumps({"parameters": {}, "context": {}}),
+        text=True,
+        capture_output=True,
+        timeout=5,
+        check=True,
+    )
+    value = json.loads(process.stdout)["hour"]
+    assert isinstance(value, str) and " h " in value

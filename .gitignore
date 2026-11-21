@@ -9,9 +9,7 @@ __pycache__/
 !*.env.example
 .cache/
 
-# Native model/process caches and secrets
-.native/
-native.env
+# Hestia web configuration is persisted in a Docker volume (never committed).
 # Audio diagnostics / custom models
 recordings/*.wav
 models/wakeword/*.onnx

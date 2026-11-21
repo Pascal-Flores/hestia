@@ -167,12 +167,14 @@ def test_wake_detector_works_with_builtin_or_custom(monkeypatch, tmp_path):
         WakeDetector(str(tmp_path / "missing.onnx"))
 
 
-def test_compose_listener_opt_in():
+def test_compose_listener_is_enabled_by_default():
     project = Path(__file__).resolve().parents[1]
     config = yaml.safe_load((project / "compose.yaml").read_text())
     listener = config["services"]["listener"]
-    assert listener["profiles"] == ["listener"]
+    assert "profiles" not in listener
     assert listener["build"]["dockerfile"] == "docker/Dockerfile.listener"
+    assert config["services"]["hestia"]["build"]["dockerfile"] == "docker/Dockerfile.core-rust"
+    assert config["services"]["hestia"]["healthcheck"]["test"][1] == "curl"
     assert listener["environment"]["LISTENER_FILTER"]
     assert "/dev/snd:/dev/snd" in listener["devices"]
     assert "llm" in config["services"] and "stt" in config["services"]

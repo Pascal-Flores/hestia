@@ -1,25 +1,4 @@
-# Optional Rust core overlay: preserves listener, STT, LLM, and Pocket TTS.
-# docker compose -f compose.yaml -f compose.rust.yaml --profile listener up -d --build
-services:
-  hestia:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.core-rust
-    # Override Python gateway's inherited healthcheck: Rust image has no "python"
-    # binary. curl is installed by Dockerfile.core-rust.
-    healthcheck:
-      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "3", "http://127.0.0.1:8765/health/live"]
-      interval: 15s
-      timeout: 5s
-      retries: 10
-      start_period: 120s
-    environment:
-      HESTIA_DATA_DIR: /data
-      HESTIA_TOOLS_DIR: /app/tools
-      RUST_LOG: info
-    volumes:
-      - ./tools:/app/tools:ro
-      - hestia_data:/data
-
-volumes:
-  hestia_data:
+# Deprecated compatibility shim: Rust is already the default in compose.yaml.
+# Retained temporarily for installations with COMPOSE_FILE=compose.yaml:compose.rust.yaml.
+# Remove COMPOSE_FILE from .env and use plain docker compose commands.
+services: {}

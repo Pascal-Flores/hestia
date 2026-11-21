@@ -1,23 +1,20 @@
-# Hestia local CPU stack (linux/amd64 and linux/arm64).
-# Public port: only Hestia's API. The three model services remain internal.
+# Hestia default Rust core + Python listener/STT + local LLM/Pocket TTS.
+# Only HTTP 8765 is exposed on the host; all model services stay internal.
 services:
   hestia:
     build:
       context: .
-      dockerfile: docker/Dockerfile.api
+      dockerfile: docker/Dockerfile.core-rust
     restart: unless-stopped
     environment:
       HESTIA_TOOLS_DIR: /app/tools
-      HESTIA_EMBEDDING_BACKEND: fastembed
-      HESTIA_EMBEDDING_MODEL: ${HESTIA_EMBEDDING_MODEL:-intfloat/multilingual-e5-small}
-      HESTIA_EMBEDDING_CACHE: /cache/embeddings
+      HESTIA_DATA_DIR: /data
+      RUST_LOG: ${RUST_LOG:-info}
       HESTIA_ROUTE_MIN_SCORE: ${HESTIA_ROUTE_MIN_SCORE:-0.80}
       HESTIA_ROUTE_MIN_MARGIN: ${HESTIA_ROUTE_MIN_MARGIN:-0.035}
-      HESTIA_ALLOWED_PERMISSIONS: ${HESTIA_ALLOWED_PERMISSIONS:-}
       HESTIA_API_KEY: ${HESTIA_API_KEY:-}
       HESTIA_LLM_URL: http://llm:8080/v1/chat/completions
       HESTIA_LLM_MODEL: hestia-local
-      HESTIA_LLM_TIMEOUT: ${HESTIA_LLM_TIMEOUT:-180}
       HESTIA_FALLBACK_LLM_URL: ${HESTIA_FALLBACK_LLM_URL:-http://llm:8080/v1/chat/completions}
       HESTIA_FALLBACK_LLM_MODEL: ${HESTIA_FALLBACK_LLM_MODEL:-hestia-local}
       HESTIA_FALLBACK_LLM_API_KEY: ${HESTIA_FALLBACK_LLM_API_KEY:-}
@@ -28,7 +25,7 @@ services:
       OMP_NUM_THREADS: '2'
     volumes:
       - ./tools:/app/tools:ro
-      - embedding_cache:/cache/embeddings
+      - hestia_data:/data
     ports:
       - "${HESTIA_BIND_IP:-127.0.0.1}:${HESTIA_PORT:-8765}:8765"
     depends_on:
@@ -36,7 +33,7 @@ services:
       - stt
       - tts
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/health/live',timeout=3)"]
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "3", "http://127.0.0.1:8765/health/live"]
       interval: 15s
       timeout: 5s
       retries: 10
@@ -95,7 +92,7 @@ services:
   tts:
     build:
       context: .
-      dockerfile: ${TTS_DOCKERFILE:-docker/Dockerfile.tts-rust}
+      dockerfile: docker/Dockerfile.tts-rust
     restart: unless-stopped
     command:
       - pocket-tts
@@ -125,11 +122,9 @@ services:
       - no-new-privileges:true
 
 
-  # Optional microphone + speaker process. Start with:
-  # docker compose --profile listener up -d --build
-  # Linux ALSA requires /dev/snd; on headless servers use an audio satellite instead.
+  # Always-on mic + speaker on Linux with /dev/snd. Runs by default.
+  # Headless machine: docker compose up -d --scale listener=0
   listener:
-    profiles: [listener]
     build:
       context: .
       dockerfile: docker/Dockerfile.listener
@@ -179,6 +174,6 @@ services:
 
 volumes:
   llm_cache:
-  embedding_cache:
+  hestia_data:
   stt_cache:
   tts_cache:
