@@ -38,8 +38,10 @@ curl -fsS http://localhost:8765/health/live
 curl -fsS http://localhost:8765/health/ready
 ```
 
-Si un micro est silencieux, régler `LISTENER_INPUT_DEVICE` dans
-`.env` (voir [docs/listener.md](docs/listener.md)). Le wake word de
+Pour choisir le microphone et les haut-parleurs, ouvrir
+**Paramètres → Périphériques audio** dans la WebUI. La sélection est
+appliquée sans reconstruire Docker et sauvegardée dans
+`recordings/device-settings.json` (voir [docs/listener.md](docs/listener.md)). Le wake word de
 démonstration est « Hey Jarvis », pas « Hestia ».
 
 ## Plugins et automatisations

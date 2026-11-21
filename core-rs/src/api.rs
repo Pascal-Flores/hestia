@@ -1,7 +1,7 @@
 use std::{collections::HashMap,sync::Arc};
 use axum::{body::Bytes,extract::{Multipart,Path,State},http::{HeaderMap,StatusCode},
   response::{Html,IntoResponse,Response},routing::{get,post},Json,Router};
-use serde::Deserialize;
+use serde::{Deserialize,Serialize};
 use serde_json::{json,Value};
 use crate::{engine::validate_inputs,model::{Manifest,PluginSettings,ScheduleJob,Settings},scheduler,state::AppState,speech};
 
@@ -31,6 +31,13 @@ struct PluginPatch{
 struct RunRequest{#[serde(default)]args:Value}
 #[derive(Deserialize)]
 struct KeysPatch{llm_api_key:Option<String>,fallback_api_key:Option<String>}
+
+#[derive(Deserialize,Serialize)]
+#[serde(deny_unknown_fields)]
+struct AudioDevicePatch{
+ input_device:Option<i64>,
+ output_device:Option<i64>,
+}
 pub fn routes(state:Arc<AppState>)->Router{
  Router::new()
  .route("/",get(index))
@@ -44,6 +51,7 @@ pub fn routes(state:Arc<AppState>)->Router{
  .route("/v1/audio/transcribe",post(transcribe))
  .route("/v1/audio/ask",post(ask))
  .route("/api/admin/settings",get(get_settings).put(put_settings))
+ .route("/api/admin/audio/devices",get(audio_devices).put(save_audio_devices))
  .route("/api/admin/llm-keys",get(get_llm_keys).put(put_llm_keys))
  .route("/api/admin/plugins",get(plugins))
  .route("/api/admin/plugins/{id}",post(update_plugin))
@@ -117,6 +125,49 @@ async fn put_settings(State(state):State<Arc<AppState>>,headers:HeaderMap,
   Ok(())=>Json(json!({"ok":true})).into_response(),
   Err(e)=>err(StatusCode::BAD_REQUEST,e).into_response()
  }
+}
+// The Rust container does not own the sound devices. Only the listener can
+// report PortAudio indices and re-open the microphone/speaker. The fixed
+// internal URL is read from the server environment, never from browser input.
+async fn proxy_audio_devices(state:&AppState, selection:Option<AudioDevicePatch>)->Response{
+ let base=std::env::var("HESTIA_LISTENER_CONTROL_URL")
+   .unwrap_or_else(|_|"http://listener:8766".into());
+ let url=format!("{}/devices",base.trim_end_matches('/'));
+ let mut request=if let Some(value)=selection{
+   state.http.put(url).json(&value)
+ }else{
+   state.http.get(url)
+ };
+ request=request.timeout(std::time::Duration::from_secs(5));
+ let key=std::env::var("HESTIA_API_KEY").unwrap_or_default();
+ if !key.is_empty(){request=request.header("X-Hestia-Key",key);}
+ let response=match request.send().await{
+   Ok(response)=>response,
+   Err(error)=>return err(StatusCode::SERVICE_UNAVAILABLE,
+     format!("Listener inaccessible : {error}. Vérifie que le service listener est démarré.")).into_response()
+ };
+ let status=response.status();
+ let content=match response.json::<Value>().await{
+   Ok(value)=>value,
+   Err(error)=>return err(StatusCode::BAD_GATEWAY,
+     format!("Réponse invalide du listener : {error}")).into_response()
+ };
+ if status.is_success(){Json(content).into_response()}
+ else{
+   let message=content.get("error").and_then(Value::as_str)
+     .unwrap_or("Configuration audio refusée");
+   err(if status.is_client_error(){StatusCode::BAD_REQUEST}
+       else{StatusCode::BAD_GATEWAY},message).into_response()
+ }
+}
+async fn audio_devices(State(state):State<Arc<AppState>>,headers:HeaderMap)->Response{
+ if let Err(e)=auth(&headers){return e.into_response();}
+ proxy_audio_devices(&state,None).await
+}
+async fn save_audio_devices(State(state):State<Arc<AppState>>,headers:HeaderMap,
+ Json(selection):Json<AudioDevicePatch>)->Response{
+ if let Err(e)=auth(&headers){return e.into_response();}
+ proxy_audio_devices(&state,Some(selection)).await
 }
 async fn get_llm_keys(State(state):State<Arc<AppState>>,headers:HeaderMap)->Response{
  if let Err(e)=auth(&headers){return e.into_response();}

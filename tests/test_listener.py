@@ -176,6 +176,8 @@ def test_compose_listener_is_enabled_by_default():
     assert config["services"]["hestia"]["build"]["dockerfile"] == "docker/Dockerfile.core-rust"
     assert config["services"]["hestia"]["healthcheck"]["test"][1] == "curl"
     assert listener["environment"]["LISTENER_FILTER"]
+    assert listener["environment"]["LISTENER_CONTROL_PORT"]
+    assert config["services"]["hestia"]["environment"]["HESTIA_LISTENER_CONTROL_URL"].startswith("http://listener:")
     assert "/dev/snd:/dev/snd" in listener["devices"]
     assert "llm" in config["services"] and "stt" in config["services"]
 

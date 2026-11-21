@@ -20,6 +20,14 @@ jobs:
           python -m pip install 'pytest>=8,<10' 'numpy>=1.26,<3' 'httpx>=0.27,<1' 'PyYAML>=6,<7' 'fastapi>=0.115,<1' 'python-multipart>=0.0.18'
       - run: pytest -q
       - run: python -m compileall -q services/listener services/stt tools
+      - name: Validate administration WebUI script
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          text = Path("core-rs/web/index.html").read_text(encoding="utf-8")
+          Path("/tmp/hestia-webui.js").write_text(text.split("<script>", 1)[1].split("</script>", 1)[0], encoding="utf-8")
+          PY
+          node --check /tmp/hestia-webui.js
 
   compose:
     runs-on: ubuntu-latest

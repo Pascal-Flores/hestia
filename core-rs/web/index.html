@@ -108,7 +108,20 @@ table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid var(--li
     <div class="field"><label>Clé API LLM de secours</label><input id="fallbackKey" type="password" autocomplete="off" placeholder="Vide = inchangé"></div>
    </div><button id="saveKeys">Enregistrer les clés</button>
    <p id="keyStatus" class="small"></p>
-   <p class="small">Ces paramètres sont appliqués à chaud au cœur Rust. Les paramètres matériels du listener (microphone, wake word) et le chargement des modèles des conteneurs restent dans le fichier .env.</p>
+   <p class="small">Les paramètres du cœur Rust sont appliqués à chaud. Les modèles Whisper et Pocket TTS restent configurés au démarrage des conteneurs.</p>
+  </div>
+  <div class="card">
+   <h3>Périphériques audio</h3>
+   <p>Choisis le microphone et les haut-parleurs détectés par le listener dans Docker. Un changement rouvre la capture audio sans redémarrer les conteneurs.</p>
+   <div class="grid">
+    <div class="field"><label for="audioInput">Microphone</label><select id="audioInput" disabled><option>Chargement…</option></select></div>
+    <div class="field"><label for="audioOutput">Haut-parleurs</label><select id="audioOutput" disabled><option>Chargement…</option></select></div>
+   </div>
+   <div class="row wrap">
+    <button id="saveAudio" disabled>Appliquer la sélection</button>
+    <button id="refreshAudio" class="ghost">Actualiser les périphériques</button>
+   </div>
+   <p id="audioStatus" class="small" role="status">Lecture des périphériques du listener…</p>
   </div>
  </section>
 </main><div id="toast" role="status"></div>
@@ -219,6 +232,58 @@ async function loadSettings(){
   if(el){if(el.type==='checkbox')el.checked=settings[k];else el.value=settings[k]}
  });
 }
+function describeAudioDevice(data, id, kind){
+ if(id===null||id===undefined)return 'automatique';
+ var found=(data.devices||[]).find(function(d){return d.id===id});
+ return found?found.name:'périphérique '+id+' introuvable';
+}
+function fillAudioSelect(id,data,kind){
+ var select=$(id),current=data[kind+'_device'];
+ var def=data['default_'+kind];
+ var defInfo=(data.devices||[]).find(function(d){return d.id===def});
+ var auto='Automatique'+(defInfo?' ('+defInfo.name+')':'');
+ var options='<option value="">'+escape(auto)+'</option>';
+ (data.devices||[]).filter(function(d){return d['max_'+kind+'_channels']>0}).forEach(function(d){
+  options+='<option value="'+d.id+'">'+escape(d.name)+' — n° '+d.id+
+   ' ('+d['max_'+kind+'_channels']+' canaux)'+(d['default_'+kind]?' · défaut':'')+'</option>';
+ });
+ select.innerHTML=options;
+ if(typeof current==='number'&&!Array.from(select.options).some(function(o){return o.value===String(current)})){
+  select.add(new Option('Introuvable — n° '+current,String(current)));
+ }
+ select.value=typeof current==='number'?String(current):'';
+ select.disabled=false;
+}
+async function loadAudioDevices(){
+ $('audioStatus').textContent='Interrogation du listener…';
+ $('audioInput').disabled=true;$('audioOutput').disabled=true;$('saveAudio').disabled=true;
+ try{
+  var data=await api('/api/admin/audio/devices');
+  fillAudioSelect('audioInput',data,'input');
+  fillAudioSelect('audioOutput',data,'output');
+  $('saveAudio').disabled=false;
+  $('audioStatus').textContent='Actuel : micro = '+describeAudioDevice(data,data.input_device,'input')+
+   ' ; haut-parleurs = '+describeAudioDevice(data,data.output_device,'output')+
+   '. Les périphériques sont ceux vus depuis Docker, pas ceux du navigateur.';
+ }catch(e){
+  $('audioInput').innerHTML='<option>Listener indisponible</option>';
+  $('audioOutput').innerHTML='<option>Listener indisponible</option>';
+  $('audioStatus').textContent='Impossible de consulter les périphériques : '+e.message;
+ }
+}
+$('refreshAudio').onclick=loadAudioDevices;
+$('saveAudio').onclick=async function(){
+ var input=$('audioInput').value,output=$('audioOutput').value;
+ try{
+  $('saveAudio').disabled=true;
+  await api('/api/admin/audio/devices','PUT',{
+    input_device:input===''?null:Number(input),
+    output_device:output===''?null:Number(output)
+  });
+  toast('Périphériques enregistrés ; réouverture de l’écoute…');
+  await loadAudioDevices();
+ }catch(e){toast(e.message,true);$('audioStatus').textContent=e.message;$('saveAudio').disabled=false;}
+};
 async function loadKeys(){
  try{var status=await api('/api/admin/llm-keys');
  $('keyStatus').textContent='Clé principale : '+(status.llm_api_key?'configurée':'non configurée')+
@@ -241,7 +306,7 @@ $('settingsForm').onsubmit=async function(event){
  catch(e){toast(e.message,true)}
 };
 async function refreshAll(){
- await Promise.allSettled([loadHealth(),loadHistory(),loadPlugins(),loadSettings(),loadKeys(),loadJobs(),loadJobTools()]);
+ await Promise.allSettled([loadHealth(),loadHistory(),loadPlugins(),loadSettings(),loadKeys(),loadJobs(),loadJobTools(),loadAudioDevices()]);
 }
 refreshAll();
 })();

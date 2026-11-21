@@ -55,6 +55,27 @@ Aucun profil Compose supplémentaire n'est nécessaire.
 
 ### Sélection du microphone / haut-parleur
 
+Dans la WebUI sur `http://localhost:8765/`, ouvrir **Paramètres**,
+puis **Périphériques audio**. Les listes sont lues directement depuis
+PortAudio **dans le conteneur listener**. Choisir un microphone et une
+sortie (ou « Automatique ») puis cliquer sur **Appliquer la sélection**.
+
+Hestia valide les entrées à 48 kHz mono et une fréquence de sortie compatible,
+sauvegarde le choix dans `recordings/device-settings.json`, puis referme et
+rouvre la capture en cours. Les réglages restent actifs après une recréation
+Docker ; aucun redémarrage manuel n'est nécessaire. Les anciens
+`LISTENER_INPUT_DEVICE` / `LISTENER_OUTPUT_DEVICE` du fichier `.env`
+restent les valeurs initiales **tant qu'aucun choix WebUI n'a été enregistré**.
+Pour restaurer le pilotage via `.env`, arrêter le listener et supprimer
+uniquement `recordings/device-settings.json`.
+
+Si la WebUI indique « Listener inaccessible », vérifier
+`docker compose ps listener` et `docker compose logs listener`.
+Le contrôle audio écoute sur le port **8766 à l'intérieur du réseau Docker**,
+jamais sur l'hôte ; seul le port 8765 de Hestia reste exposé.
+
+#### Diagnostic en ligne de commande
+
 ```sh
 docker compose run --rm --no-deps listener \
   python -m listener.app --list-devices

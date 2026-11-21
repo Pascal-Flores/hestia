@@ -14,3 +14,7 @@ __pycache__/
 recordings/*.wav
 models/wakeword/*.onnx
 models/wakeword/*.tflite
+
+# Persisted local PortAudio choices from the WebUI
+recordings/device-settings.json
+recordings/device-settings.json.tmp
