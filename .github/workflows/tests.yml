@@ -28,6 +28,25 @@ jobs:
       - run: docker compose --profile listener -f compose.yaml config --quiet
       - run: python -m compileall -q services/listener
 
+  rust-compose-healthcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cp .env.example .env
+      - name: Validate Rust overlay and healthcheck
+        run: |
+          docker compose -f compose.yaml -f compose.rust.yaml config --quiet
+          docker compose -f compose.yaml -f compose.rust.yaml config --format json > /tmp/hestia-rust-compose.json
+          python3 - <<'PY'
+          import json
+          with open("/tmp/hestia-rust-compose.json", encoding="utf-8") as file:
+              config = json.load(file)
+          check = config["services"]["hestia"]["healthcheck"]["test"]
+          assert check[0:2] == ["CMD", "curl"], check
+          assert check[-1] == "http://127.0.0.1:8765/health/live", check
+          assert "python" not in check, check
+          PY
+
   native-launcher:
     runs-on: ubuntu-latest
     steps:

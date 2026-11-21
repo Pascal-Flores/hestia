@@ -27,6 +27,27 @@ si un accès LAN est volontairement activé. Les secrets des plugins sont
 conservés **en clair dans un fichier local** protégé en lecture (0600), jamais
 renvoyés par l'API d'administration : sécuriser les sauvegardes du volume.
 
+## Diagnostic Docker : conteneur \u0060unhealthy\u0060
+
+Le Compose Rust surcharge le healthcheck du serveur Python :
+le fichier de base utilisait \u0060python -c ...\u0060, qui n'existe pas dans
+l'image du cœur Rust. La version Rust vérifie maintenant \u0060/health/live\u0060
+avec \u0060curl\u0060, installé dans l'image.
+
+Après mise à jour du dépôt, recréer uniquement le conteneur Hestia, en
+**conservant les deux fichiers Compose** :
+
+\u0060\u0060\u0060sh
+docker compose -f compose.yaml -f compose.rust.yaml up -d --no-deps --force-recreate hestia
+docker compose -f compose.yaml -f compose.rust.yaml ps hestia
+curl -fsS http://127.0.0.1:8765/health/live
+\u0060\u0060\u0060
+
+\u0060/health/live\u0060 vérifie le serveur Rust lui-même. Pour savoir si
+Whisper, llama.cpp et Pocket TTS sont également disponibles, utiliser
+\u0060/health/ready\u0060. Si la vérification de vie échoue toujours, lire
+\u0060docker compose -f compose.yaml -f compose.rust.yaml logs hestia\u0060.
+
 ## Plugins configurables
 
 Les plugins sont dans `tools/<domaine>/<nom>/tool.yaml` et leur programme.
